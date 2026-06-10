@@ -144,7 +144,7 @@
   <p>停下来，看一会儿</p>
 </header>
 
-<div id="hint" class="ui">点击下方切换场景 · ← → 键 · 右上角开启声音</div>
+<div id="hint" class="ui">点击下方切换场景 · ← → 键 · 也试试点一点画面</div>
 
 <button id="soundBtn" class="ui">♪ 声音 关</button>
 
@@ -170,16 +170,69 @@
   }
 
   const rand = (a, b) => a + Math.random() * (b - a);
-  const clamp01 = v => Math.max(0, Math.min(1, v));
   const lerp = (a, b, k) => a + (b - a) * k;
   const lerpC = (c1, c2, k) => c1.map((v, i) => Math.round(lerp(v, c2[i], k)));
+  const lerpC4 = (a, b, k) => [
+    Math.round(lerp(a[0], b[0], k)),
+    Math.round(lerp(a[1], b[1], k)),
+    Math.round(lerp(a[2], b[2], k)),
+    lerp(a[3], b[3], k),
+  ];
   const rgb = c => `rgb(${c[0]},${c[1]},${c[2]})`;
+  const rgba = c => `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`;
 
   function bgGradient(stops) {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     stops.forEach(([p, c]) => g.addColorStop(p, c));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
+  }
+
+  /* 当前真实当地时刻在一天中的位置（0 = 午夜，0.5 = 正午） */
+  function dayFrac() {
+    const n = new Date();
+    return (n.getHours() * 3600 + n.getMinutes() * 60 + n.getSeconds()) / 86400;
+  }
+  /* 夜晚程度：白天 0，夜里 1，晨昏之间过渡 */
+  function nightAmt(d) {
+    if (d >= 0.30 && d <= 0.70) return 0;
+    if (d > 0.22 && d < 0.30) return 1 - (d - 0.22) / 0.08;
+    if (d > 0.70 && d < 0.78) return (d - 0.70) / 0.08;
+    return 1;
+  }
+  /* 月相：0 新月，0.5 满月。以 2000-01-06 18:14 UTC 的新月为基准 */
+  function moonPhase(date) {
+    const synodic = 29.530588;
+    const days = (date.getTime() - Date.UTC(2000, 0, 6, 18, 14)) / 86400000;
+    return ((days / synodic) % 1 + 1) % 1;
+  }
+
+  /* 鼠标位置（用于星座的靠近浮现） */
+  const pointer = { x: -9999, y: -9999 };
+  document.addEventListener('pointermove', e => {
+    pointer.x = e.clientX;
+    pointer.y = e.clientY;
+  }, { passive: true });
+
+  /* 流星：stars 与 daynight 共用 */
+  function stepMeteor(holder, dt) {
+    const m = holder.meteor;
+    if (!m) return;
+    m.life += dt;
+    const p = m.life / 1.2;
+    if (p >= 1) { holder.meteor = null; return; }
+    const len = 140, dx = -0.85, dy = 0.5;
+    const x = m.x + dx * p * 300, y = m.y + dy * p * 300;
+    const alpha = Math.sin(p * Math.PI) * 0.9;
+    const g = ctx.createLinearGradient(x, y, x - dx * len, y - dy * len);
+    g.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+    g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+    ctx.strokeStyle = g;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - dx * len, y - dy * len);
+    ctx.stroke();
   }
 
   /* ================= 音频引擎（Web Audio 实时合成，无音频文件） ================= */
@@ -245,6 +298,40 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
       src.stop(t0 + 0.15);
     },
+    /* 一下水花：低频噪声短促涌起 */
+    splash(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const src = this.noise();
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 750;
+      const g = c.createGain();
+      g.gain.value = 0;
+      src.connect(f); f.connect(g); g.connect(out);
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.07, t0 + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55);
+      src.stop(t0 + 0.6);
+    },
+    /* 一声轻钟：基音加一个八度泛音，缓缓衰减 */
+    chime(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const g = c.createGain();
+      g.gain.value = 0;
+      g.connect(out);
+      [660, 1320].forEach((fr, i) => {
+        const o = c.createOscillator();
+        o.frequency.value = fr;
+        const og = c.createGain();
+        og.gain.value = i ? 0.3 : 1;
+        o.connect(og); og.connect(g);
+        o.start(t0);
+        o.stop(t0 + 2.6);
+      });
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.05, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 2.5);
+    },
     /* 持续的风/气流：低通噪声 + 缓慢漂移 */
     wind(out, { vol = 0.22, cutoff = 220 } = {}) {
       const c = this.ctx;
@@ -309,11 +396,17 @@
   soundBtn.addEventListener('click', () => audio.toggle());
 
   const stopAll = nodes => nodes.forEach(n => { try { n.stop(); } catch (e) {} });
+  /* 点击音效：仅在声音开启时随当前场景的音轨一起出声 */
+  function sfx(name) {
+    if (audio.enabled && audio.ctx && audio.handle) audio[name](audio.handle.out);
+  }
 
   /* ================= 场景一：萤火 ================= */
   const fireflies = {
     name: '萤火',
     flies: [],
+    rings: [],
+    lure: null,
     init() {
       this.inited = true;
       const n = Math.round(Math.min(60, W * H / 28000));
@@ -326,6 +419,8 @@
         phase: rand(0, Math.PI * 2),
         blink: rand(0.4, 1.2),
       }));
+      this.rings = [];
+      this.lure = null;
     },
     draw(dt, t) {
       bgGradient([[0, '#0d2420'], [0.6, '#081a16'], [1, '#04100d']]);
@@ -335,8 +430,24 @@
       ctx.fillStyle = moon;
       ctx.fillRect(0, 0, W, H);
 
+      if (this.lure) {
+        this.lure.age += dt;
+        if (this.lure.age > 3) this.lure = null;
+      }
+
       for (const f of this.flies) {
         f.a += f.va * dt;
+        // 点击处的微光会吸引附近的萤火虫缓缓聚过来
+        if (this.lure) {
+          const dx = this.lure.x - f.x, dy = this.lure.y - f.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist < 280 && dist > 10) {
+            const ta = Math.atan2(dy, dx);
+            let da = ta - f.a;
+            da = Math.atan2(Math.sin(da), Math.cos(da));
+            f.a += da * Math.min(1, 3 * dt) * (1 - dist / 280) * 2.5;
+          }
+        }
         f.x += Math.cos(f.a) * f.speed * dt;
         f.y += Math.sin(f.a) * f.speed * dt;
         if (f.x < -20) f.x = W + 20; if (f.x > W + 20) f.x = -20;
@@ -352,6 +463,22 @@
         ctx.arc(f.x, f.y, f.r * 7, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      for (let i = this.rings.length - 1; i >= 0; i--) {
+        const r = this.rings[i];
+        r.life += dt;
+        const p = r.life / 1.2;
+        if (p >= 1) { this.rings.splice(i, 1); continue; }
+        ctx.strokeStyle = `rgba(214, 255, 170, ${(1 - p) * 0.30})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, 10 + p * 80, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    },
+    tap(x, y) {
+      this.lure = { x, y, age: 0 };
+      if (this.rings.length < 6) this.rings.push({ x, y, life: 0 });
     },
     /* 夏夜：轻微的夜风 + 蟋蟀 */
     sound(A, out) {
@@ -369,27 +496,86 @@
   };
 
   /* ================= 场景二：海浪 ================= */
+  /* 一天中不同时段的配色关键帧（按真实当地时间连续过渡） */
+  const WK_NIGHT = {
+    sky: [[8, 12, 32], [14, 20, 46], [22, 30, 62], [8, 16, 40]],
+    wave: [[42, 72, 118, 0.45], [32, 56, 98, 0.55], [24, 44, 80, 0.70], [16, 32, 62, 0.90]],
+    glow: [215, 228, 255, 0.22], glowY: 0.26,
+  };
+  const WK_DAWN = {
+    sky: [[56, 60, 108], [112, 84, 118], [232, 148, 108], [36, 66, 114]],
+    wave: [[64, 98, 150, 0.45], [50, 80, 128, 0.55], [36, 62, 104, 0.70], [24, 44, 82, 0.90]],
+    glow: [255, 200, 150, 0.28], glowY: 0.56,
+  };
+  const WK_DAY = {
+    sky: [[108, 168, 222], [148, 198, 232], [182, 222, 238], [36, 104, 162]],
+    wave: [[58, 128, 182, 0.45], [44, 108, 162, 0.55], [30, 88, 138, 0.70], [20, 68, 112, 0.90]],
+    glow: [255, 252, 235, 0.16], glowY: 0.18,
+  };
+  const WK_DUSK = {
+    sky: [[43, 42, 78], [71, 59, 102], [138, 90, 120], [28, 50, 96]],
+    wave: [[70, 110, 165, 0.45], [55, 90, 145, 0.55], [40, 70, 120, 0.70], [28, 50, 95, 0.90]],
+    glow: [255, 190, 140, 0.30], glowY: 0.58,
+  };
+  const WAVE_KEYS = [
+    { d: 0.00, ...WK_NIGHT }, { d: 0.22, ...WK_NIGHT }, { d: 0.28, ...WK_DAWN },
+    { d: 0.34, ...WK_DAY }, { d: 0.62, ...WK_DAY }, { d: 0.74, ...WK_DUSK },
+    { d: 0.82, ...WK_NIGHT }, { d: 1.00, ...WK_NIGHT },
+  ];
+  function wavePalette(d) {
+    for (let i = 1; i < WAVE_KEYS.length; i++) {
+      if (d <= WAVE_KEYS[i].d) {
+        const a = WAVE_KEYS[i - 1], b = WAVE_KEYS[i];
+        const k = (d - a.d) / (b.d - a.d);
+        return {
+          sky: a.sky.map((c, j) => lerpC(c, b.sky[j], k)),
+          wave: a.wave.map((c, j) => lerpC4(c, b.wave[j], k)),
+          glow: lerpC4(a.glow, b.glow, k),
+          glowY: lerp(a.glowY, b.glowY, k),
+        };
+      }
+    }
+    return WAVE_KEYS[WAVE_KEYS.length - 1];
+  }
+
   const waves = {
     name: '海浪',
     layers: [],
+    glints: [],
     init() {
       this.inited = true;
       this.layers = [
-        { y: 0.62, amp: 18, len: 0.9, speed: 0.18, color: 'rgba(70, 110, 165, 0.45)' },
-        { y: 0.70, amp: 22, len: 1.3, speed: -0.12, color: 'rgba(55, 90, 145, 0.55)' },
-        { y: 0.78, amp: 26, len: 1.7, speed: 0.09, color: 'rgba(40, 70, 120, 0.70)' },
-        { y: 0.86, amp: 30, len: 2.2, speed: -0.06, color: 'rgba(28, 50, 95, 0.90)' },
+        { y: 0.62, amp: 18, len: 0.9, speed: 0.18 },
+        { y: 0.70, amp: 22, len: 1.3, speed: -0.12 },
+        { y: 0.78, amp: 26, len: 1.7, speed: 0.09 },
+        { y: 0.86, amp: 30, len: 2.2, speed: -0.06 },
       ];
+      this.glints = [];
     },
     draw(dt, t) {
-      bgGradient([[0, '#2b2a4e'], [0.45, '#473b66'], [0.62, '#8a5a78'], [1, '#1c3260']]);
-      const sun = ctx.createRadialGradient(W * 0.5, H * 0.58, 0, W * 0.5, H * 0.58, Math.min(W, H) * 0.45);
-      sun.addColorStop(0, 'rgba(255, 190, 140, 0.30)');
-      sun.addColorStop(1, 'rgba(255, 190, 140, 0)');
-      ctx.fillStyle = sun;
+      const d = dayFrac();
+      const P = wavePalette(d);
+      const na = nightAmt(d);
+      bgGradient([[0, rgb(P.sky[0])], [0.45, rgb(P.sky[1])], [0.62, rgb(P.sky[2])], [1, rgb(P.sky[3])]]);
+
+      // 日 / 月的光晕
+      const gx = W * 0.5, gy = H * P.glowY;
+      const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, Math.min(W, H) * 0.45);
+      glow.addColorStop(0, rgba(P.glow));
+      glow.addColorStop(1, rgba([P.glow[0], P.glow[1], P.glow[2], 0]));
+      ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
 
-      for (const l of this.layers) {
+      // 夜里挂一轮明月
+      if (na > 0.05) {
+        ctx.fillStyle = `rgba(232, 238, 252, ${0.9 * na})`;
+        ctx.beginPath();
+        ctx.arc(gx, gy, Math.min(W, H) * 0.030, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      for (let i = 0; i < this.layers.length; i++) {
+        const l = this.layers[i];
         ctx.beginPath();
         ctx.moveTo(0, H);
         for (let x = 0; x <= W; x += 4) {
@@ -400,9 +586,42 @@
         }
         ctx.lineTo(W, H);
         ctx.closePath();
-        ctx.fillStyle = l.color;
+        ctx.fillStyle = rgba(P.wave[i]);
         ctx.fill();
       }
+
+      // 夜里的月光在海面铺成一条柔和的光路
+      if (na > 0.05) {
+        ctx.save();
+        ctx.translate(gx, H * 0.78);
+        ctx.scale(1, 3.4);
+        const col = ctx.createRadialGradient(0, 0, 0, 0, 0, W * 0.07);
+        col.addColorStop(0, `rgba(225, 235, 255, ${0.11 * na})`);
+        col.addColorStop(1, 'rgba(225, 235, 255, 0)');
+        ctx.fillStyle = col;
+        ctx.beginPath();
+        ctx.arc(0, 0, W * 0.07, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // 点击激起的波光
+      for (let i = this.glints.length - 1; i >= 0; i--) {
+        const g = this.glints[i];
+        g.life += dt;
+        const p = g.life / 1.4;
+        if (p >= 1) { this.glints.splice(i, 1); continue; }
+        ctx.strokeStyle = `rgba(255, 250, 230, ${(1 - p) * 0.40})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.ellipse(g.x, g.y, 6 + p * 46, (6 + p * 46) * 0.28, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    },
+    tap(x, y) {
+      // 波光只出现在水面上
+      if (this.glints.length < 10) this.glints.push({ x, y: Math.max(y, H * 0.64), life: 0 });
+      sfx('splash');
     },
     /* 海浪：低频噪声，音量像潮水一样一阵阵起伏 */
     sound(A, out) {
@@ -425,9 +644,26 @@
   };
 
   /* ================= 场景三：星夜 ================= */
+  /* 几个藏在星空里的星座：归一化坐标 + 连线 */
+  const CONSTELLATIONS = [
+    { // 北斗七星
+      pts: [[0, 0.30], [0.14, 0.22], [0.27, 0.18], [0.40, 0.18], [0.42, 0.34], [0.58, 0.36], [0.56, 0.16]],
+      lines: [[0, 1], [1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 3]],
+    },
+    { // 仙后座
+      pts: [[0, 0.30], [0.16, 0.10], [0.34, 0.26], [0.52, 0.06], [0.68, 0.18]],
+      lines: [[0, 1], [1, 2], [2, 3], [3, 4]],
+    },
+    { // 猎户座
+      pts: [[0.16, 0.10], [0.52, 0.06], [0.30, 0.40], [0.37, 0.44], [0.44, 0.48], [0.24, 0.82], [0.60, 0.78]],
+      lines: [[0, 2], [1, 4], [2, 3], [3, 4], [2, 5], [4, 6]],
+    },
+  ];
+
   const stars = {
     name: '星夜',
     list: [],
+    consts: [],
     meteor: null,
     nextMeteor: 0,
     init() {
@@ -439,7 +675,16 @@
         phase: rand(0, Math.PI * 2),
         blink: rand(0.3, 1.0),
       }));
+      const cs = Math.min(W, H) * 0.30;
+      const anchors = [[W * 0.10, H * 0.10], [W * 0.60, H * 0.06], [W * 0.32, H * 0.42]];
+      this.consts = CONSTELLATIONS.map((def, i) => ({
+        def, size: cs,
+        x: anchors[i][0], y: anchors[i][1],
+        alpha: 0, boost: 0,
+        phase: rand(0, Math.PI * 2),
+      }));
       this.nextMeteor = rand(3, 7);
+      this.meteor = null;
     },
     draw(dt, t) {
       bgGradient([[0, '#060a1c'], [0.7, '#0a1130'], [1, '#141a3c']]);
@@ -454,31 +699,53 @@
         ctx.fill();
       }
 
+      // 星座：星点稍亮、闪烁更沉稳；连线只在鼠标靠近或点按时隐约浮现
+      for (const c of this.consts) {
+        c.x += 1.2 * dt;
+        if (c.x > W + 40) c.x = -c.size - 40;
+        const pts = c.def.pts.map(p => [c.x + p[0] * c.size, c.y + p[1] * c.size]);
+        for (const [px, py] of pts) {
+          const tw = 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 0.4 + c.phase + px * 0.01));
+          ctx.fillStyle = `rgba(225, 235, 255, ${tw})`;
+          ctx.beginPath();
+          ctx.arc(px, py, 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        const cxm = c.x + c.size * 0.5, cym = c.y + c.size * 0.3;
+        const near = Math.hypot(pointer.x - cxm, pointer.y - cym) < c.size * 0.75;
+        c.boost = Math.max(0, c.boost - dt * 0.25);
+        const target = Math.max(near ? 0.22 : 0, c.boost);
+        c.alpha += (target - c.alpha) * Math.min(1, 2.5 * dt);
+        if (c.alpha > 0.005) {
+          ctx.strokeStyle = `rgba(180, 205, 255, ${c.alpha})`;
+          ctx.lineWidth = 0.8;
+          ctx.beginPath();
+          for (const [a, b] of c.def.lines) {
+            ctx.moveTo(pts[a][0], pts[a][1]);
+            ctx.lineTo(pts[b][0], pts[b][1]);
+          }
+          ctx.stroke();
+        }
+      }
+
       this.nextMeteor -= dt;
       if (!this.meteor && this.nextMeteor <= 0) {
         this.meteor = { x: rand(W * 0.2, W * 0.9), y: rand(0, H * 0.3), life: 0 };
         this.nextMeteor = rand(6, 14);
       }
-      if (this.meteor) {
-        const m = this.meteor;
-        m.life += dt;
-        const p = m.life / 1.2;
-        if (p >= 1) { this.meteor = null; }
-        else {
-          const len = 140, dx = -0.85, dy = 0.5;
-          const x = m.x + dx * p * 300, y = m.y + dy * p * 300;
-          const alpha = Math.sin(p * Math.PI) * 0.9;
-          const g = ctx.createLinearGradient(x, y, x - dx * len, y - dy * len);
-          g.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
-          g.addColorStop(1, 'rgba(255, 255, 255, 0)');
-          ctx.strokeStyle = g;
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.moveTo(x, y);
-          ctx.lineTo(x - dx * len, y - dy * len);
-          ctx.stroke();
+      stepMeteor(this, dt);
+    },
+    tap(x, y) {
+      // 点在星座附近：浮现连线；点在别处：召唤一颗流星
+      let hit = false;
+      for (const c of this.consts) {
+        const cxm = c.x + c.size * 0.5, cym = c.y + c.size * 0.3;
+        if (Math.hypot(x - cxm, y - cym) < c.size * 0.75) {
+          c.boost = 0.30;
+          hit = true;
         }
       }
+      if (!hit) this.meteor = { x, y, life: 0 };
     },
     /* 星夜：极轻的低音长音，近乎寂静 */
     sound(A, out) {
@@ -517,7 +784,11 @@
 
   const breath = {
     name: '呼吸',
-    init() { this.inited = true; },
+    rings: [],
+    init() {
+      this.inited = true;
+      this.rings = [];
+    },
     draw(dt, t) {
       bgGradient([[0, '#13343b'], [0.6, '#0e272e'], [1, '#081a20']]);
 
@@ -539,6 +810,19 @@
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.arc(cx, cy, rMax, 0, Math.PI * 2); ctx.stroke();
 
+      // 点击泛起的光环，像轻敲一声磬
+      for (let i = this.rings.length - 1; i >= 0; i--) {
+        const ring = this.rings[i];
+        ring.life += dt;
+        const p = ring.life / 2.0;
+        if (p >= 1) { this.rings.splice(i, 1); continue; }
+        ctx.strokeStyle = `rgba(170, 235, 225, ${(1 - p) * 0.35})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, ring.r0 + p * rMax * 1.6, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
       const ball = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
       ball.addColorStop(0, 'rgba(190, 245, 235, 0.95)');
       ball.addColorStop(1, 'rgba(110, 200, 190, 0.55)');
@@ -554,6 +838,12 @@
       ctx.fillStyle = 'rgba(255, 255, 255, 0.40)';
       ctx.font = `300 14px "PingFang SC", "Microsoft YaHei", sans-serif`;
       ctx.fillText(`${Math.ceil(remain)}`, cx, cy + rMax + 84);
+    },
+    tap() {
+      const { k } = breathState(performance.now() / 1000);
+      const rMin = Math.min(W, H) * 0.10, rMax = Math.min(W, H) * 0.22;
+      if (this.rings.length < 5) this.rings.push({ r0: rMin + (rMax - rMin) * k, life: 0 });
+      sfx('chime');
     },
     /* 呼吸：气流声随圆球同步起伏 */
     sound(A, out) {
@@ -580,10 +870,12 @@
   const snow = {
     name: '落雪',
     flakes: [],
+    puffs: [],
     init() {
       this.inited = true;
       const n = Math.round(Math.min(160, W * H / 9000));
       this.flakes = Array.from({ length: n }, () => this.make(true));
+      this.puffs = [];
     },
     make(anyY) {
       const depth = rand(0.3, 1);
@@ -592,6 +884,7 @@
         y: anyY ? rand(0, H) : -10,
         r: 1 + depth * 2.2,
         vy: 12 + depth * 26,
+        vx: 0,
         sway: rand(0.3, 0.8),
         phase: rand(0, Math.PI * 2),
         alpha: 0.25 + depth * 0.6,
@@ -603,13 +896,37 @@
       for (let i = 0; i < this.flakes.length; i++) {
         const f = this.flakes[i];
         f.y += f.vy * dt;
-        f.x += Math.sin(t * f.sway + f.phase) * 10 * dt;
+        f.vx *= Math.exp(-2.2 * dt); // 被风吹开后缓缓恢复
+        f.x += f.vx * dt + Math.sin(t * f.sway + f.phase) * 10 * dt;
         if (f.y > H + 10) this.flakes[i] = this.make(false);
         ctx.fillStyle = `rgba(240, 245, 255, ${f.alpha})`;
         ctx.beginPath();
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
         ctx.fill();
       }
+
+      for (let i = this.puffs.length - 1; i >= 0; i--) {
+        const p = this.puffs[i];
+        p.life += dt;
+        const q = p.life / 1.0;
+        if (q >= 1) { this.puffs.splice(i, 1); continue; }
+        ctx.strokeStyle = `rgba(240, 245, 255, ${(1 - q) * 0.18})`;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 12 + q * 90, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    },
+    tap(x, y) {
+      // 一阵轻风把附近的雪花吹开
+      for (const f of this.flakes) {
+        const dx = f.x - x, dy = f.y - y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 200 && dist > 1) {
+          f.vx += (dx / dist) * (1 - dist / 200) * 300;
+        }
+      }
+      if (this.puffs.length < 6) this.puffs.push({ x, y, life: 0 });
     },
     /* 落雪：清冷绵长的风声 */
     sound(A, out) {
@@ -657,8 +974,8 @@
         d.x += d.vy * slant * dt;
         if (d.y > H + 10) {
           // 一部分雨滴落地时激起涟漪
-          if (d.depth > 0.6 && this.ripples.length < 14 && Math.random() < 0.35) {
-            this.ripples.push({ x: d.x, y: H - rand(4, 36), life: 0 });
+          if (d.depth > 0.6 && this.ripples.length < 18 && Math.random() < 0.35) {
+            this.ripples.push({ x: d.x, y: H - rand(4, 36), life: 0, max: 22 });
           }
           this.drops[i] = this.make(false);
           continue;
@@ -673,13 +990,21 @@
       for (let i = this.ripples.length - 1; i >= 0; i--) {
         const r = this.ripples[i];
         r.life += dt;
+        if (r.life < 0) continue; // 连环涟漪的延迟
         const p = r.life / 1.1;
         if (p >= 1) { this.ripples.splice(i, 1); continue; }
         ctx.strokeStyle = `rgba(200, 212, 240, ${0.30 * (1 - p)})`;
         ctx.beginPath();
-        ctx.ellipse(r.x, r.y, 4 + p * 22, (4 + p * 22) * 0.30, 0, 0, Math.PI * 2);
+        ctx.ellipse(r.x, r.y, 4 + p * r.max, (4 + p * r.max) * 0.30, 0, 0, Math.PI * 2);
         ctx.stroke();
       }
+    },
+    tap(x, y) {
+      // 点击处溅起三圈连环涟漪
+      for (let i = 0; i < 3 && this.ripples.length < 24; i++) {
+        this.ripples.push({ x, y, life: -i * 0.14, max: 34 - i * 6 });
+      }
+      sfx('droplet');
     },
     /* 落雨：连绵的雨声 + 偶尔清脆的水滴 */
     sound(A, out) {
@@ -731,25 +1056,22 @@
     }
     return SKY[SKY.length - 1];
   }
-  /* 夜晚程度：白天 0，夜里 1，晨昏之间过渡 */
-  function nightAmt(d) {
-    if (d >= 0.30 && d <= 0.70) return 0;
-    if (d > 0.22 && d < 0.30) return 1 - (d - 0.22) / 0.08;
-    if (d > 0.70 && d < 0.78) return (d - 0.70) / 0.08;
-    return 1;
-  }
 
   const daynight = {
     name: '昼夜',
     T: 180, // 一个完整昼夜约 3 分钟
     d0: 0,
+    moonPh: 0.25,
     stars: [],
+    birds: [],
+    meteor: null,
     lastD: 0.5,
     init() {
       this.inited = true;
-      // 起点对准当地真实时刻，再加速循环
+      // 起点对准当地真实时刻，再加速循环；月相取当天的真实月相
       const now = new Date();
       this.d0 = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400;
+      this.moonPh = moonPhase(now);
       const n = Math.round(Math.min(130, W * H / 11000));
       this.stars = Array.from({ length: n }, () => ({
         x: rand(0, W), y: rand(0, H * 0.7),
@@ -757,6 +1079,8 @@
         phase: rand(0, Math.PI * 2),
         blink: rand(0.3, 1.0),
       }));
+      this.birds = [];
+      this.meteor = null;
     },
     orbXY(q) {
       // 在天空中划过的弧线，q ∈ [0,1]
@@ -781,6 +1105,7 @@
           ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
           ctx.fill();
         }
+        stepMeteor(this, dt);
       }
 
       // 太阳（6:00 - 18:00）
@@ -797,29 +1122,57 @@
         ctx.fillStyle = `rgb(255, ${Math.round(238 - low * 60)}, ${Math.round(200 - low * 90)})`;
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
       } else {
-        // 月亮（18:00 - 次日 6:00）
+        // 月亮（18:00 - 次日 6:00），形状按当天真实月相
         const q = d >= 0.75 ? (d - 0.75) / 0.5 : (d + 0.25) / 0.5;
         const { x, y } = this.orbXY(q);
         const r = Math.min(W, H) * 0.035;
+        const ph = this.moonPh;
+        // 被照亮的比例：0 新月 → 1 满月；保留一丝月牙避免完全消失
+        const ill = Math.max(0.06, ph < 0.5 ? ph * 2 : (1 - ph) * 2);
+        const dir = ph < 0.5 ? -1 : 1; // 渐盈亮面在右（阴影偏左），渐亏反之
         const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 5);
-        glow.addColorStop(0, 'rgba(220, 230, 255, 0.30)');
+        glow.addColorStop(0, `rgba(220, 230, 255, ${0.30 * (0.3 + 0.7 * ill)})`);
         glow.addColorStop(1, 'rgba(220, 230, 255, 0)');
         ctx.fillStyle = glow;
         ctx.beginPath(); ctx.arc(x, y, r * 5, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = 'rgb(235, 240, 250)';
         ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-        // 月面阴影，呈现弯月
-        ctx.fillStyle = rgb(lerpC(sky.top, [40, 45, 70], 0.5));
-        ctx.beginPath(); ctx.arc(x - r * 0.38, y - r * 0.18, r * 0.92, 0, Math.PI * 2); ctx.fill();
+        // 在月面内用近天空色画一个偏移圆作为阴影，得到正确的盈亏形状
+        ctx.save();
+        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = rgb(lerpC(sky.top, [30, 34, 64], 0.5));
+        ctx.beginPath();
+        ctx.arc(x + dir * ill * 2.3 * r, y - r * 0.10, r * 1.02, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
       }
+
+      // 白天点击放飞的鸟群
+      for (const b of this.birds) {
+        b.x += b.vx * dt;
+        const y = b.y0 + Math.sin(t * 0.8 + b.phase) * 8;
+        const flap = Math.abs(Math.sin(t * 6 + b.phase)) * 4.5;
+        const a = (1 - na) * 0.55;
+        if (a > 0.02) {
+          ctx.strokeStyle = `rgba(30, 42, 54, ${a})`;
+          ctx.lineWidth = 1.4;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(b.x - 8, y - flap);
+          ctx.quadraticCurveTo(b.x - 2.5, y + 1.5, b.x, y);
+          ctx.quadraticCurveTo(b.x + 2.5, y + 1.5, b.x + 8, y - flap);
+          ctx.stroke();
+        }
+      }
+      this.birds = this.birds.filter(b => b.x > -80 && b.x < W + 80);
 
       // 远近两层山丘剪影，颜色随昼夜变化
       const hillNear = lerpC([52, 84, 72], [10, 14, 26], na);
       const hillFar = lerpC([72, 108, 96], [16, 22, 38], na);
-      this.hill(0.74, 36, 16, 0.9, hillFar, t);
-      this.hill(0.83, 44, 20, 1.7, hillNear, t);
+      this.hill(0.74, 36, 16, 0.9, hillFar);
+      this.hill(0.83, 44, 20, 1.7, hillNear);
     },
-    hill(base, a1, a2, seed, color, t) {
+    hill(base, a1, a2, seed, color) {
       ctx.beginPath();
       ctx.moveTo(0, H);
       for (let x = 0; x <= W; x += 6) {
@@ -832,6 +1185,23 @@
       ctx.closePath();
       ctx.fillStyle = rgb(color);
       ctx.fill();
+    },
+    tap(x, y) {
+      if (nightAmt(this.lastD) > 0.5) {
+        // 夜里：点哪儿，流星就从哪儿划过
+        this.meteor = { x, y, life: 0 };
+      } else if (this.birds.length < 12) {
+        // 白天：放飞一小群鸟
+        const dir = x < W / 2 ? 1 : -1;
+        for (let i = 0; i < 3; i++) {
+          this.birds.push({
+            x: x - dir * i * 26 + rand(-8, 8),
+            y0: y + rand(-14, 14) - i * 10,
+            vx: dir * rand(26, 38),
+            phase: rand(0, Math.PI * 2),
+          });
+        }
+      }
     },
     /* 昼夜：旷野的风，入夜后传来蟋蟀声 */
     sound(A, out) {
@@ -893,6 +1263,13 @@
   document.addEventListener('keydown', (e) => {
     if (e.key === 'ArrowRight') switchTo((current + 1) % scenes.length);
     if (e.key === 'ArrowLeft') switchTo((current - 1 + scenes.length) % scenes.length);
+  });
+
+  /* 点击画面：交给当前场景做应景的小效果 */
+  canvas.addEventListener('pointerdown', (e) => {
+    if (switching) return;
+    const s = scenes[current];
+    if (s.tap) s.tap(e.clientX, e.clientY);
   });
 
   /* ================= 界面自动隐藏 ================= */
