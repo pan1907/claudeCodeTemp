@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>松弛一刻 · 放空自己</title>
+<meta name="description" content="一个让你放松身心的小站：慢节奏的轻动画，萤火、海浪、星夜、呼吸、落雪。">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: #05130f;
+    font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    user-select: none;
+  }
+
+  #scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* 切换场景时的黑场过渡 */
+  #fade {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.7s ease;
+    z-index: 5;
+  }
+  #fade.on { opacity: 1; }
+
+  .ui {
+    position: fixed;
+    z-index: 10;
+    transition: opacity 1.2s ease;
+  }
+  body.idle .ui { opacity: 0; }
+
+  header.ui {
+    top: 32px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.85);
+    pointer-events: none;
+  }
+  header.ui h1 {
+    font-size: 20px;
+    font-weight: 400;
+    letter-spacing: 10px;
+    text-indent: 10px; /* 抵消最后一个字的字距，保证视觉居中 */
+  }
+  header.ui p {
+    margin-top: 10px;
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  nav.ui {
+    bottom: 36px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.10);
+  }
+  nav.ui button {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 13px;
+    letter-spacing: 2px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.4s ease, color 0.4s ease;
+    font-family: inherit;
+  }
+  nav.ui button:hover { color: rgba(255, 255, 255, 0.85); }
+  nav.ui button.active {
+    background: rgba(255, 255, 255, 0.16);
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  #hint {
+    bottom: 96px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: rgba(255, 255, 255, 0.35);
+    pointer-events: none;
+  }
+
+  /* 呼吸场景的引导文字由 canvas 绘制，这里无需额外元素 */
+
+  @media (max-width: 600px) {
+    header.ui { top: 24px; }
+    header.ui h1 { font-size: 17px; letter-spacing: 7px; text-indent: 7px; }
+    nav.ui { bottom: 24px; gap: 2px; padding: 5px; }
+    nav.ui button { font-size: 12px; padding: 7px 10px; letter-spacing: 1px; }
+    #hint { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<canvas id="scene"></canvas>
+<div id="fade"></div>
+
+<header class="ui">
+  <h1>松弛一刻</h1>
+  <p>停下来，看一会儿</p>
+</header>
+
+<div id="hint" class="ui">点击下方切换场景 · 也可以用 ← → 键</div>
+
+<nav class="ui" id="switcher"></nav>
+
+<script>
+(() => {
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  const fadeEl = document.getElementById('fade');
+  const switcher = document.getElementById('switcher');
+
+  let W = 0, H = 0, DPR = 1;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * DPR;
+    canvas.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    scenes.forEach(s => s.inited && s.init());
+  }
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+
+  function bgGradient(stops) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    stops.forEach(([p, c]) => g.addColorStop(p, c));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /* ---------- 场景一：萤火 ---------- */
+  const fireflies = {
+    name: '萤火',
+    flies: [],
+    init() {
+      this.inited = true;
+      const n = Math.round(Math.min(60, W * H / 28000));
+      this.flies = Array.from({ length: n }, () => ({
+        x: rand(0, W), y: rand(0, H),
+        r: rand(1.2, 2.8),
+        a: rand(0, Math.PI * 2),       // 漂移方向
+        va: rand(-0.3, 0.3),           // 转向速度
+        speed: rand(4, 12),            // px / 秒
+        phase: rand(0, Math.PI * 2),   // 呼吸式闪烁相位
+        blink: rand(0.4, 1.2),
+      }));
+    },
+    draw(dt, t) {
+      bgGradient([[0, '#0d2420'], [0.6, '#081a16'], [1, '#04100d']]);
+      // 远处朦胧的光晕，让画面有层次
+      const moon = ctx.createRadialGradient(W * 0.78, H * 0.22, 0, W * 0.78, H * 0.22, Math.min(W, H) * 0.4);
+      moon.addColorStop(0, 'rgba(180, 220, 190, 0.07)');
+      moon.addColorStop(1, 'rgba(180, 220, 190, 0)');
+      ctx.fillStyle = moon;
+      ctx.fillRect(0, 0, W, H);
+
+      for (const f of this.flies) {
+        f.a += f.va * dt;
+        f.x += Math.cos(f.a) * f.speed * dt;
+        f.y += Math.sin(f.a) * f.speed * dt;
+        if (f.x < -20) f.x = W + 20; if (f.x > W + 20) f.x = -20;
+        if (f.y < -20) f.y = H + 20; if (f.y > H + 20) f.y = -20;
+
+        const glow = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * f.blink + f.phase));
+        const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r * 7);
+        g.addColorStop(0, `rgba(214, 255, 170, ${0.85 * glow})`);
+        g.addColorStop(0.3, `rgba(190, 240, 140, ${0.35 * glow})`);
+        g.addColorStop(1, 'rgba(190, 240, 140, 0)');
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r * 7, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+  };
+
+  /* ---------- 场景二：海浪 ---------- */
+  const waves = {
+    name: '海浪',
+    layers: [],
+    init() {
+      this.inited = true;
+      this.layers = [
+        { y: 0.62, amp: 18, len: 0.9, speed: 0.18, color: 'rgba(70, 110, 165, 0.45)' },
+        { y: 0.70, amp: 22, len: 1.3, speed: -0.12, color: 'rgba(55, 90, 145, 0.55)' },
+        { y: 0.78, amp: 26, len: 1.7, speed: 0.09, color: 'rgba(40, 70, 120, 0.70)' },
+        { y: 0.86, amp: 30, len: 2.2, speed: -0.06, color: 'rgba(28, 50, 95, 0.90)' },
+      ];
+    },
+    draw(dt, t) {
+      bgGradient([[0, '#2b2a4e'], [0.45, '#473b66'], [0.62, '#8a5a78'], [1, '#1c3260']]);
+      // 落日余晖
+      const sun = ctx.createRadialGradient(W * 0.5, H * 0.58, 0, W * 0.5, H * 0.58, Math.min(W, H) * 0.45);
+      sun.addColorStop(0, 'rgba(255, 190, 140, 0.30)');
+      sun.addColorStop(1, 'rgba(255, 190, 140, 0)');
+      ctx.fillStyle = sun;
+      ctx.fillRect(0, 0, W, H);
+
+      for (const l of this.layers) {
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        for (let x = 0; x <= W; x += 4) {
+          const y = H * l.y
+            + Math.sin((x / W) * Math.PI * 2 * l.len + t * l.speed * Math.PI * 2) * l.amp
+            + Math.sin((x / W) * Math.PI * 2 * l.len * 2.3 + t * l.speed * 5) * l.amp * 0.25;
+          ctx.lineTo(x, y);
+        }
+        ctx.lineTo(W, H);
+        ctx.closePath();
+        ctx.fillStyle = l.color;
+        ctx.fill();
+      }
+    },
+  };
+
+  /* ---------- 场景三：星夜 ---------- */
+  const stars = {
+    name: '星夜',
+    list: [],
+    meteor: null,
+    nextMeteor: 0,
+    init() {
+      this.inited = true;
+      const n = Math.round(Math.min(220, W * H / 7000));
+      this.list = Array.from({ length: n }, () => ({
+        x: rand(0, W), y: rand(0, H),
+        r: rand(0.4, 1.6),
+        phase: rand(0, Math.PI * 2),
+        blink: rand(0.3, 1.0),
+      }));
+      this.nextMeteor = rand(3, 7);
+    },
+    draw(dt, t) {
+      bgGradient([[0, '#060a1c'], [0.7, '#0a1130'], [1, '#141a3c']]);
+
+      for (const s of this.list) {
+        s.x += 1.2 * dt; // 整片星空极缓慢地平移
+        if (s.x > W + 2) s.x = -2;
+        const tw = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * s.blink + s.phase));
+        ctx.fillStyle = `rgba(235, 240, 255, ${tw})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 偶尔一颗流星
+      this.nextMeteor -= dt;
+      if (!this.meteor && this.nextMeteor <= 0) {
+        this.meteor = { x: rand(W * 0.2, W * 0.9), y: rand(0, H * 0.3), life: 0 };
+        this.nextMeteor = rand(6, 14);
+      }
+      if (this.meteor) {
+        const m = this.meteor;
+        m.life += dt;
+        const p = m.life / 1.2; // 1.2 秒划过
+        if (p >= 1) { this.meteor = null; }
+        else {
+          const len = 140, dx = -0.85, dy = 0.5;
+          const x = m.x + dx * p * 300, y = m.y + dy * p * 300;
+          const alpha = Math.sin(p * Math.PI) * 0.9;
+          const g = ctx.createLinearGradient(x, y, x - dx * len, y - dy * len);
+          g.addColorStop(0, `rgba(255, 255, 255, ${alpha})`);
+          g.addColorStop(1, 'rgba(255, 255, 255, 0)');
+          ctx.strokeStyle = g;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x - dx * len, y - dy * len);
+          ctx.stroke();
+        }
+      }
+    },
+  };
+
+  /* ---------- 场景四：呼吸 ---------- */
+  const breath = {
+    name: '呼吸',
+    // 4-4-6 呼吸法：吸气 4 秒，屏息 4 秒，呼气 6 秒
+    phases: [
+      { label: '吸 气', dur: 4, from: 0, to: 1 },
+      { label: '屏 息', dur: 4, from: 1, to: 1 },
+      { label: '呼 气', dur: 6, from: 1, to: 0 },
+    ],
+    init() { this.inited = true; },
+    draw(dt, t) {
+      bgGradient([[0, '#13343b'], [0.6, '#0e272e'], [1, '#081a20']]);
+
+      const total = this.phases.reduce((s, p) => s + p.dur, 0);
+      let tt = t % total, phase = this.phases[0];
+      for (const p of this.phases) {
+        if (tt < p.dur) { phase = p; break; }
+        tt -= p.dur;
+      }
+      const lin = tt / phase.dur;
+      const eased = lin < 0.5 ? 2 * lin * lin : 1 - Math.pow(-2 * lin + 2, 2) / 2; // easeInOut
+      const k = phase.from + (phase.to - phase.from) * eased;
+
+      const cx = W / 2, cy = H / 2;
+      const rMin = Math.min(W, H) * 0.10;
+      const rMax = Math.min(W, H) * 0.22;
+      const r = rMin + (rMax - rMin) * k;
+
+      // 外圈光晕
+      const halo = ctx.createRadialGradient(cx, cy, r * 0.3, cx, cy, r * 2.4);
+      halo.addColorStop(0, 'rgba(140, 220, 210, 0.25)');
+      halo.addColorStop(1, 'rgba(140, 220, 210, 0)');
+      ctx.fillStyle = halo;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 两个参考圈：最小与最大
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(cx, cy, rMax, 0, Math.PI * 2); ctx.stroke();
+
+      // 主圆
+      const ball = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+      ball.addColorStop(0, 'rgba(190, 245, 235, 0.95)');
+      ball.addColorStop(1, 'rgba(110, 200, 190, 0.55)');
+      ctx.fillStyle = ball;
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 引导文字与秒数
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.font = `300 ${Math.max(18, Math.min(W, H) * 0.035)}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+      ctx.fillText(phase.label, cx, cy + rMax + 56);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.40)';
+      ctx.font = `300 14px "PingFang SC", "Microsoft YaHei", sans-serif`;
+      ctx.fillText(`${Math.ceil(phase.dur - tt)}`, cx, cy + rMax + 84);
+    },
+  };
+
+  /* ---------- 场景五：落雪 ---------- */
+  const snow = {
+    name: '落雪',
+    flakes: [],
+    init() {
+      this.inited = true;
+      const n = Math.round(Math.min(160, W * H / 9000));
+      this.flakes = Array.from({ length: n }, () => this.make(true));
+    },
+    make(anyY) {
+      const depth = rand(0.3, 1); // 远近层次：越小越远、越慢、越淡
+      return {
+        x: rand(0, W),
+        y: anyY ? rand(0, H) : -10,
+        r: 1 + depth * 2.2,
+        vy: 12 + depth * 26,
+        sway: rand(0.3, 0.8),
+        phase: rand(0, Math.PI * 2),
+        alpha: 0.25 + depth * 0.6,
+      };
+    },
+    draw(dt, t) {
+      bgGradient([[0, '#1d2433'], [0.7, '#27304a'], [1, '#323c5c']]);
+
+      for (let i = 0; i < this.flakes.length; i++) {
+        const f = this.flakes[i];
+        f.y += f.vy * dt;
+        f.x += Math.sin(t * f.sway + f.phase) * 10 * dt;
+        if (f.y > H + 10) this.flakes[i] = this.make(false);
+        ctx.fillStyle = `rgba(240, 245, 255, ${f.alpha})`;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+  };
+
+  /* ---------- 场景管理与切换 ---------- */
+  const scenes = [fireflies, waves, stars, breath, snow];
+  let current = 0;
+  let switching = false;
+
+  scenes.forEach((s, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = s.name;
+    btn.addEventListener('click', () => switchTo(i));
+    switcher.appendChild(btn);
+  });
+  const buttons = [...switcher.children];
+
+  function setActive() {
+    buttons.forEach((b, i) => b.classList.toggle('active', i === current));
+  }
+
+  function switchTo(i) {
+    if (i === current || switching) return;
+    switching = true;
+    fadeEl.classList.add('on');
+    setTimeout(() => {
+      current = i;
+      scenes[current].init();
+      setActive();
+      fadeEl.classList.remove('on');
+      switching = false;
+    }, 700);
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowRight') switchTo((current + 1) % scenes.length);
+    if (e.key === 'ArrowLeft') switchTo((current - 1 + scenes.length) % scenes.length);
+  });
+
+  /* ---------- 界面自动隐藏 ---------- */
+  let idleTimer;
+  function wake() {
+    document.body.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => document.body.classList.add('idle'), 4000);
+  }
+  ['mousemove', 'touchstart', 'keydown', 'click'].forEach(ev =>
+    document.addEventListener(ev, wake, { passive: true })
+  );
+
+  /* ---------- 主循环 ---------- */
+  let last = performance.now();
+  function loop(now) {
+    // 标签页切回时 dt 可能很大，截断以避免动画跳跃
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    const t = now / 1000;
+    ctx.clearRect(0, 0, W, H);
+    scenes[current].draw(dt, t);
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+  scenes[current].init();
+  setActive();
+  wake();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
