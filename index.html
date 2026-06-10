@@ -205,6 +205,33 @@
     ctx.restore();
   }
 
+  /* 海豚剪影：头朝 +x，跃起时按运动方向旋转，向左时上下翻转以保持腹部朝下 */
+  function drawDolphin(x, y, heading, s, flip, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(heading);
+    if (flip) ctx.scale(1, -1);
+    ctx.scale(s, s);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(34, 3);                              // 吻部
+    ctx.bezierCurveTo(20, -7, 4, -11, -8, -9);      // 背部到背鳍前
+    ctx.lineTo(-3, -19);                            // 背鳍尖
+    ctx.lineTo(-12, -8);                            // 背鳍后
+    ctx.bezierCurveTo(-22, -6, -30, -3, -39, -10);  // 尾柄到上尾叶
+    ctx.bezierCurveTo(-30, -2, -30, 1, -39, 8);     // 尾凹 + 下尾叶
+    ctx.bezierCurveTo(-28, 2, -14, 4, 0, 5);        // 腹部
+    ctx.bezierCurveTo(14, 6, 26, 6, 34, 3);         // 腹部回到吻部
+    ctx.closePath();
+    ctx.fill();
+    // 一点眼睛
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.beginPath();
+    ctx.arc(22, -2, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   /* 当前真实当地时刻在一天中的位置（0 = 午夜，0.5 = 正午） */
   function dayFrac() {
     const n = new Date();
@@ -298,6 +325,28 @@
       }
       osc.start(t0);
       osc.stop(t0 + pulses * 0.075 + 0.1);
+    },
+    /* 一声鸟鸣：两三个快速滑动的短音节 */
+    bird(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const base = rand(1900, 2600);
+      const syl = (ts, f0, f1) => {
+        const o = c.createOscillator();
+        o.type = 'sine';
+        const g = c.createGain();
+        g.gain.value = 0;
+        o.connect(g); g.connect(out);
+        o.frequency.setValueAtTime(f0, t0 + ts);
+        o.frequency.linearRampToValueAtTime(f1, t0 + ts + 0.07);
+        g.gain.setValueAtTime(0, t0 + ts);
+        g.gain.linearRampToValueAtTime(0.018, t0 + ts + 0.015);
+        g.gain.linearRampToValueAtTime(0, t0 + ts + 0.09);
+        o.start(t0 + ts);
+        o.stop(t0 + ts + 0.12);
+      };
+      syl(0, base, base * 1.3);
+      syl(0.11, base * 1.15, base * 0.95);
+      if (Math.random() < 0.5) syl(0.22, base * 1.25, base * 1.05);
     },
     /* 一滴水声：窄带噪声的瞬间脉冲 */
     droplet(out) {
@@ -598,7 +647,8 @@
         { y: 0.78, amp: 26, len: 1.7, speed: 0.09 },
         { y: 0.86, amp: 30, len: 2.2, speed: -0.06 },
       ];
-      this.glints = [];
+      this.dolphins = [];
+      this.splashes = [];
     },
     draw(dt, t) {
       const d = dayFrac();
@@ -653,30 +703,58 @@
         ctx.restore();
       }
 
-      // 点击激起的波光
-      for (let i = this.glints.length - 1; i >= 0; i--) {
-        const g = this.glints[i];
-        g.life += dt;
-        const p = g.life / 1.4;
-        if (p >= 1) { this.glints.splice(i, 1); continue; }
-        const r = 8 + p * 52;
-        softRing(g.x, g.y, r, r * 0.55, [255, 250, 230], Math.pow(1 - p, 1.5) * 0.30, 0.28);
-        // 最初的一瞬有个亮芯，像光落在水面
-        if (p < 0.35) {
-          const a = (1 - p / 0.35) * 0.35;
-          const core = ctx.createRadialGradient(g.x, g.y, 0, g.x, g.y, 14);
-          core.addColorStop(0, `rgba(255, 250, 230, ${a})`);
-          core.addColorStop(1, 'rgba(255, 250, 230, 0)');
-          ctx.fillStyle = core;
+      // 水面溅起的水花（海豚入水/出水）
+      const waterY = H * 0.63;
+      for (let i = this.splashes.length - 1; i >= 0; i--) {
+        const s = this.splashes[i];
+        s.life += dt;
+        const p = s.life / 0.9;
+        if (p >= 1) { this.splashes.splice(i, 1); continue; }
+        const r = 6 + p * 34;
+        softRing(s.x, waterY, r, r * 0.6, [240, 248, 255], Math.pow(1 - p, 1.6) * 0.35, 0.32);
+        // 几粒水珠四溅
+        for (let k = 0; k < 5; k++) {
+          const ang = Math.PI + (k / 4 - 0.5) * 2.2;
+          const dd = p * (18 + k * 4);
+          const a = Math.pow(1 - p, 2) * 0.5;
+          ctx.fillStyle = `rgba(240,248,255,${a})`;
           ctx.beginPath();
-          ctx.arc(g.x, g.y, 14, 0, Math.PI * 2);
+          ctx.arc(s.x + Math.cos(ang) * dd, waterY - Math.sin(ang) * dd * 0.9, 1.4, 0, Math.PI * 2);
           ctx.fill();
         }
       }
+
+      // 跃出水面的海豚
+      const dColor = na > 0.5 ? 'rgba(180,195,225,0.85)' : 'rgba(22,34,58,0.9)';
+      for (let i = this.dolphins.length - 1; i >= 0; i--) {
+        const dn = this.dolphins[i];
+        dn.t += dt;
+        const p = dn.t / dn.dur;
+        if (p >= 1) {
+          this.splashes.push({ x: dn.x0 + dn.vx * dn.dur, life: 0 });
+          this.dolphins.splice(i, 1);
+          continue;
+        }
+        const x = dn.x0 + dn.vx * dn.t;
+        const y = waterY - dn.jumpH * Math.sin(p * Math.PI);
+        const vy = -dn.jumpH * Math.PI / dn.dur * Math.cos(p * Math.PI);
+        const heading = Math.atan2(vy, dn.vx);
+        // 只画露出水面的部分
+        if (y < waterY + 6) drawDolphin(x, y, heading, dn.s, dn.vx < 0, dColor);
+      }
     },
     tap(x, y) {
-      // 波光只出现在水面上
-      if (this.glints.length < 10) this.glints.push({ x, y: Math.max(y, H * 0.64), life: 0 });
+      if (this.dolphins.length >= 3) return;
+      const waterY = H * 0.63;
+      const dir = x < W / 2 ? 1 : -1;        // 朝屏幕中心方向跃起
+      const span = rand(150, 240);
+      const dur = rand(1.5, 1.9);
+      this.dolphins.push({
+        x0: x - dir * span / 2, vx: dir * span / dur,
+        jumpH: H * rand(0.20, 0.28), dur, t: 0,
+        s: Math.min(W, H) * 0.0016,
+      });
+      this.splashes.push({ x: x - dir * span / 2, life: 0 }); // 起跳水花
       sfx('splash');
     },
     /* 海浪：低频噪声，音量像潮水一样一阵阵起伏 */
@@ -722,44 +800,61 @@
     consts: [],
     meteor: null,
     nextMeteor: 0,
+    omega: 0,
+    pivot: { x: 0, y: 0 },
     init() {
       this.inited = true;
-      const n = Math.round(Math.min(220, W * H / 7000));
+      // 整片星空绕一个"天极"极缓慢地旋转（约 30 分钟一圈），近极点的星几乎不动、
+      // 远处的星划出长弧——比单纯左右平移自然得多，也不会循环重复
+      this.pivot = { x: W * 0.9, y: H * 0.12 };
+      let maxR = 0;
+      for (const [cx, cy] of [[0, 0], [W, 0], [0, H], [W, H]]) {
+        maxR = Math.max(maxR, Math.hypot(cx - this.pivot.x, cy - this.pivot.y));
+      }
+      this.omega = 2 * Math.PI / 1800;
+      const n = Math.min(900, Math.round((W * H / 7000) * (Math.PI * maxR * maxR) / (W * H)));
       this.list = Array.from({ length: n }, () => ({
-        x: rand(0, W), y: rand(0, H),
+        a0: rand(0, Math.PI * 2),
+        r0: maxR * Math.sqrt(Math.random()),
         r: rand(0.4, 1.6),
         phase: rand(0, Math.PI * 2),
         blink: rand(0.3, 1.0),
       }));
       const cs = Math.min(W, H) * 0.30;
-      const anchors = [[W * 0.10, H * 0.10], [W * 0.60, H * 0.06], [W * 0.32, H * 0.42]];
+      const anchors = [[W * 0.14, H * 0.20], [W * 0.52, H * 0.14], [W * 0.30, H * 0.48]];
       this.consts = CONSTELLATIONS.map((def, i) => ({
         def, size: cs,
-        x: anchors[i][0], y: anchors[i][1],
+        ax: anchors[i][0], ay: anchors[i][1],
         alpha: 0, boost: 0,
         phase: rand(0, Math.PI * 2),
       }));
       this.nextMeteor = rand(3, 7);
       this.meteor = null;
     },
+    // 绕天极旋转某一点
+    rot(px, py, ang) {
+      const cos = Math.cos(ang), sin = Math.sin(ang);
+      const dx = px - this.pivot.x, dy = py - this.pivot.y;
+      return [this.pivot.x + dx * cos - dy * sin, this.pivot.y + dx * sin + dy * cos];
+    },
     draw(dt, t) {
       bgGradient([[0, '#060a1c'], [0.7, '#0a1130'], [1, '#141a3c']]);
+      const ang = t * this.omega;
 
       for (const s of this.list) {
-        s.x += 1.2 * dt;
-        if (s.x > W + 2) s.x = -2;
+        const a = s.a0 + ang;
+        const x = this.pivot.x + Math.cos(a) * s.r0;
+        const y = this.pivot.y + Math.sin(a) * s.r0;
         const tw = 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(t * s.blink + s.phase));
         ctx.fillStyle = `rgba(235, 240, 255, ${tw})`;
         ctx.beginPath();
-        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.arc(x, y, s.r, 0, Math.PI * 2);
         ctx.fill();
       }
 
       // 星座：星点稍亮、闪烁更沉稳；连线只在鼠标靠近或点按时隐约浮现
       for (const c of this.consts) {
-        c.x += 1.2 * dt;
-        if (c.x > W + 40) c.x = -c.size - 40;
-        const pts = c.def.pts.map(p => [c.x + p[0] * c.size, c.y + p[1] * c.size]);
+        const pts = c.def.pts.map(p => this.rot(c.ax + p[0] * c.size, c.ay + p[1] * c.size, ang));
         for (const [px, py] of pts) {
           const tw = 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 0.4 + c.phase + px * 0.01));
           ctx.fillStyle = `rgba(225, 235, 255, ${tw})`;
@@ -767,7 +862,7 @@
           ctx.arc(px, py, 1.6, 0, Math.PI * 2);
           ctx.fill();
         }
-        const cxm = c.x + c.size * 0.5, cym = c.y + c.size * 0.3;
+        const [cxm, cym] = this.rot(c.ax + c.size * 0.5, c.ay + c.size * 0.3, ang);
         const near = Math.hypot(pointer.x - cxm, pointer.y - cym) < c.size * 0.75;
         c.boost = Math.max(0, c.boost - dt * 0.25);
         const target = Math.max(near ? 0.22 : 0, c.boost);
@@ -793,9 +888,10 @@
     },
     tap(x, y) {
       // 点在星座附近：浮现连线；点在别处：召唤一颗流星
+      const ang = performance.now() / 1000 * this.omega;
       let hit = false;
       for (const c of this.consts) {
-        const cxm = c.x + c.size * 0.5, cym = c.y + c.size * 0.3;
+        const [cxm, cym] = this.rot(c.ax + c.size * 0.5, c.ay + c.size * 0.3, ang);
         if (Math.hypot(x - cxm, y - cym) < c.size * 0.75) {
           c.boost = 0.30;
           hit = true;
@@ -1114,7 +1210,7 @@
 
   const daynight = {
     name: '昼夜',
-    T: 600, // 一个完整昼夜约 10 分钟，慢慢看
+    T: 900, // 一个完整昼夜约 15 分钟，慢慢看
     d0: 0,
     t0: 0,
     moonPh: 0.25,
@@ -1276,8 +1372,258 @@
     },
   };
 
+  /* ================= 场景八：种地 ================= */
+  /* 四季各自的天空与土地配色（在相邻季节之间平滑过渡） */
+  const SEASONS = [
+    { name: '春', sky: [[150, 200, 222], [212, 228, 220]], soil: [[96, 66, 44], [72, 50, 32]] },
+    { name: '夏', sky: [[118, 178, 224], [196, 226, 234]], soil: [[100, 68, 44], [74, 50, 32]] },
+    { name: '秋', sky: [[224, 198, 150], [240, 220, 176]], soil: [[112, 80, 50], [86, 60, 38]] },
+    { name: '冬', sky: [[176, 192, 214], [224, 232, 240]], soil: [[206, 210, 220], [228, 232, 238]] },
+  ];
+  /* 由一年中的进度 yp(0..1) 求出当前的生长 / 金黄 / 积雪等状态 */
+  function farmState(yp) {
+    const si = Math.floor(yp * 4) % 4;
+    const sp = yp * 4 - Math.floor(yp * 4);
+    let g = 0, gold = 0, snow = 0, flowers = 0, leaves = 0;
+    if (si === 0) {            // 春：积雪消融，禾苗钻出、抽长，野花渐开
+      g = 0.12 + sp * 0.5;
+      snow = Math.max(0, 1 - sp / 0.35);
+      flowers = Math.min(1, sp * 2);
+    } else if (si === 1) {     // 夏：绿意最盛
+      g = 0.62 + sp * 0.38;
+      flowers = Math.max(0, 0.5 - sp);
+    } else if (si === 2) {     // 秋：转金、最后收割
+      if (sp < 0.72) { g = 1; gold = sp / 0.72; }
+      else { g = 1 - (sp - 0.72) / 0.28 * 0.94; gold = 1; }
+      leaves = Math.min(1, sp * 1.2);
+    } else {                   // 冬：田地休眠、白雪覆盖
+      g = 0;
+      snow = Math.min(1, sp / 0.4);
+    }
+    return { si, sp, g, gold, snow, flowers, leaves };
+  }
+
+  const farming = {
+    name: '种地',
+    YEAR: 240,        // 一年约 4 分钟，四季缓缓更替
+    t0: 0,
+    crops: [],
+    parts: [],        // 飘落的花瓣 / 叶子 / 谷粒
+    flutters: [],     // 蝴蝶
+    init() {
+      this.inited = true;
+      this.t0 = performance.now() / 1000;
+      const count = Math.round(Math.min(90, W / 15));
+      this.crops = Array.from({ length: count }, (_, i) => ({
+        x: (i + 0.5) / count * W + rand(-5, 5),
+        base: rand(0.82, 1.18),
+        sway: rand(0, Math.PI * 2),
+        lean: rand(-0.12, 0.12),
+        grow: 1,            // 既有作物随季节生长
+      }));
+      this.parts = [];
+      this.flutters = [];
+    },
+    horizon() { return H * 0.66; },
+    // 画一株作物：x 处、生长度 gg、金黄度 gold、颜色
+    stalk(x, gg, gold, t, cropBase, lean, sway) {
+      const hY = this.horizon();
+      const maxH = H * 0.24;
+      const h = maxH * gg * cropBase;
+      if (h < 2) return;
+      const topX = x + Math.sin(t * 0.5 + sway) * 5 * gg + lean * h;
+      const topY = hY - h;
+      const green = [lerp(110, 196, gold), lerp(170, 168, gold), lerp(70, 86, gold)];
+      ctx.strokeStyle = `rgb(${green[0]|0},${green[1]|0},${green[2]|0})`;
+      ctx.lineWidth = 1.6 + gg * 1.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, hY);
+      ctx.quadraticCurveTo((x + topX) / 2 - lean * 6, hY - h * 0.5, topX, topY);
+      ctx.stroke();
+      // 叶片
+      if (gg > 0.4) {
+        ctx.lineWidth = 1.2;
+        for (const ly of [0.45, 0.7]) {
+          const lx = lerp(x, topX, ly), lyy = hY - h * ly, side = ly === 0.45 ? 1 : -1;
+          ctx.beginPath();
+          ctx.moveTo(lx, lyy);
+          ctx.quadraticCurveTo(lx + side * 10, lyy - 3, lx + side * 14, lyy - 9);
+          ctx.stroke();
+        }
+      }
+      // 秋天的麦穗
+      if (gold > 0.05) {
+        ctx.fillStyle = `rgba(${lerp(150,236,gold)|0},${lerp(170,200,gold)|0},${lerp(90,110,gold)|0},${gold})`;
+        ctx.beginPath();
+        ctx.ellipse(topX, topY - 2, 3.2, 7, -lean, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    },
+    draw(dt, t) {
+      const yp = ((t - this.t0) / this.YEAR) % 1;
+      const st = farmState(yp);
+      const si = st.si, nx = (si + 1) % 4, k = st.sp;
+      const A = SEASONS[si], B = SEASONS[nx];
+      const skyT = lerpC(A.sky[0], B.sky[0], k), skyB = lerpC(A.sky[1], B.sky[1], k);
+      const soilT = lerpC(A.soil[0], B.soil[0], k), soilB = lerpC(A.soil[1], B.soil[1], k);
+      const hY = this.horizon();
+
+      bgGradient([[0, rgb(skyT)], [hY / H, rgb(skyB)]]);
+
+      // 暖阳（冬天偏冷偏弱）
+      const sunX = W * 0.78, sunY = H * 0.22;
+      const warm = si === 3 ? 0.5 : 1;
+      const sr = Math.min(W, H) * 0.05;
+      const glow = ctx.createRadialGradient(sunX, sunY, 0, sunX, sunY, sr * 5);
+      glow.addColorStop(0, `rgba(255,${230 - (1 - warm) * 40},${180 + (1 - warm) * 30},${0.5 * warm + 0.2})`);
+      glow.addColorStop(1, 'rgba(255,230,180,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = `rgb(255,${248 - (1 - warm) * 30},${225 - (1 - warm) * 20})`;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, sr, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 远山
+      ctx.fillStyle = rgb(lerpC(skyB, [90, 120, 110], 0.35 * (1 - st.snow) + 0.1));
+      ctx.beginPath();
+      ctx.moveTo(0, hY);
+      for (let x = 0; x <= W; x += 8) {
+        ctx.lineTo(x, hY - 30 - Math.sin(x / W * 6.0) * 18 - Math.sin(x / W * 13) * 9);
+      }
+      ctx.lineTo(W, hY); ctx.closePath(); ctx.fill();
+
+      // 田地
+      const soil = ctx.createLinearGradient(0, hY, 0, H);
+      soil.addColorStop(0, rgb(soilT));
+      soil.addColorStop(1, rgb(soilB));
+      ctx.fillStyle = soil;
+      ctx.fillRect(0, hY, W, H - hY);
+      // 垄沟纹理
+      ctx.strokeStyle = `rgba(0,0,0,${0.06 * (1 - st.snow)})`;
+      ctx.lineWidth = 1;
+      for (let r = 1; r <= 5; r++) {
+        const ry = hY + (H - hY) * (r / 6);
+        ctx.beginPath(); ctx.moveTo(0, ry); ctx.lineTo(W, ry); ctx.stroke();
+      }
+
+      // 作物
+      for (const c of this.crops) {
+        c.grow += ((st.g) - c.grow) * Math.min(1, dt * 0.8); // 平滑跟随季节生长度
+        this.stalk(c.x, c.grow, st.gold, t, c.base, c.lean, c.sway);
+        // 春夏作物顶上的小花
+        if (st.flowers > 0.3 && st.gold < 0.05 && c.grow > 0.45 && (c.x | 0) % 3 === 0) {
+          const fy = hY - H * 0.24 * c.grow * c.base;
+          ctx.fillStyle = `rgba(255,235,245,${st.flowers * 0.9})`;
+          ctx.beginPath();
+          ctx.arc(c.x + Math.sin(t * 0.5 + c.sway) * 5 * c.grow + c.lean * H * 0.24 * c.grow, fy - 2, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 积雪盖在田地上
+      if (st.snow > 0.02) {
+        const sn = ctx.createLinearGradient(0, hY - 6, 0, H);
+        sn.addColorStop(0, `rgba(238,242,250,${st.snow * 0.9})`);
+        sn.addColorStop(1, `rgba(228,234,244,${st.snow})`);
+        ctx.fillStyle = sn;
+        ctx.beginPath();
+        ctx.moveTo(0, H);
+        ctx.lineTo(0, hY + 2);
+        for (let x = 0; x <= W; x += 10) {
+          ctx.lineTo(x, hY - 2 + Math.sin(x / 37) * 2);
+        }
+        ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+      }
+
+      // 飘浮的花瓣 / 落叶 / 谷粒
+      for (let i = this.parts.length - 1; i >= 0; i--) {
+        const p = this.parts[i];
+        p.life += dt;
+        if (p.life >= p.dur) { this.parts.splice(i, 1); continue; }
+        p.vy += 6 * dt;
+        p.x += (p.vx + Math.sin(p.life * 2 + p.phase) * 12) * dt;
+        p.y += p.vy * dt;
+        const a = (1 - p.life / p.dur) * p.alpha;
+        ctx.fillStyle = `rgba(${p.c[0]},${p.c[1]},${p.c[2]},${a})`;
+        ctx.beginPath();
+        ctx.ellipse(p.x, p.y, p.r, p.r * 0.6, p.life * 3 + p.phase, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // 蝴蝶
+      for (let i = this.flutters.length - 1; i >= 0; i--) {
+        const b = this.flutters[i];
+        b.life += dt;
+        if (b.life >= b.dur) { this.flutters.splice(i, 1); continue; }
+        b.x += b.vx * dt;
+        b.y += Math.sin(b.life * 2.5 + b.phase) * 22 * dt;
+        const wing = Math.abs(Math.sin(b.life * 12)) * 5 + 1.5;
+        const a = Math.min(1, (b.dur - b.life)) * 0.85;
+        ctx.fillStyle = `rgba(${b.c[0]},${b.c[1]},${b.c[2]},${a})`;
+        for (const s of [-1, 1]) {
+          ctx.beginPath();
+          ctx.ellipse(b.x + s * wing * 0.7, b.y, wing, wing * 1.5, s * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      this.flutters = this.flutters.filter(b => b.x > -40 && b.x < W + 40);
+
+      // 角落里淡淡的季节字
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(255,255,255,0.16)';
+      ctx.font = `300 ${Math.min(W, H) * 0.16}px "PingFang SC","Microsoft YaHei",serif`;
+      ctx.fillText(SEASONS[si].name, 30, H - 30);
+    },
+    tap(x, y) {
+      const yp = ((performance.now() / 1000 - this.t0) / this.YEAR) % 1;
+      const st = farmState(yp);
+      const hY = this.horizon();
+      // 在点击处播下一株新苗
+      this.crops.push({
+        x, base: rand(0.8, 1.2), sway: rand(0, Math.PI * 2),
+        lean: rand(-0.12, 0.12), grow: 0.02,
+      });
+      if (this.crops.length > 160) this.crops.shift();
+      // 应季的小爆发：春撒花瓣、夏放蝴蝶、秋扬谷粒落叶、冬扬雪沫
+      let col = [255, 235, 245], n = 6, up = -20;
+      if (st.si === 1) { // 夏：放一只蝴蝶
+        this.flutters.push({
+          x, y: Math.min(y, hY - 20), vx: (x < W / 2 ? 1 : -1) * rand(24, 40),
+          phase: rand(0, 7), life: 0, dur: rand(5, 9),
+          c: [255, 220, 120],
+        });
+        col = [255, 240, 180]; n = 4;
+      } else if (st.si === 2) { col = [228, 188, 96]; n = 9; up = -10; } // 秋：谷粒落叶
+      else if (st.si === 3) { col = [240, 245, 252]; n = 7; } // 冬：雪沫
+      for (let i = 0; i < n; i++) {
+        this.parts.push({
+          x: x + rand(-8, 8), y: (st.si === 2 || st.si === 3 ? y : hY) + rand(-6, 6),
+          vx: rand(-22, 22), vy: rand(up, up + 14),
+          r: rand(2, 3.5), phase: rand(0, 7), life: 0, dur: rand(1.6, 3),
+          alpha: 0.9, c: col,
+        });
+      }
+      sfx('droplet');
+    },
+    /* 种地：田野的轻风 + 偶尔几声鸟鸣 */
+    sound(A, out) {
+      const nodes = A.wind(out, { vol: 0.07, cutoff: 300 });
+      let next = 2;
+      return {
+        update(t) {
+          if (t < next) return;
+          next = t + rand(1.6, 4.2);
+          A.bird(out);
+        },
+        dispose() { stopAll(nodes); },
+      };
+    },
+  };
+
   /* ================= 场景管理与切换 ================= */
-  const scenes = [fireflies, waves, stars, breath, snow, rain, daynight];
+  const scenes = [fireflies, waves, stars, breath, snow, rain, daynight, farming];
 
   /* 按当地时间挑选初始场景 */
   function sceneByHour(h) {
