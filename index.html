@@ -491,6 +491,35 @@
       doCroak(t0);
       if (Math.random() < 0.6) doCroak(t0 + rand(0.34, 0.5));  // "呱…呱"
     },
+    /* 一声猫叫（狩猎兴奋时的短"喵"）：~600Hz 基频、拱形音高 + 共振峰滑动成"喵"的元音 + 轻微颤动 */
+    meow(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const dur = rand(0.3, 0.42);
+      const f0 = rand(600, 720);
+      const src = c.createOscillator(); src.type = 'sawtooth';
+      // 拱形音高：先升后降（喵的语调）
+      src.frequency.setValueAtTime(f0 * 0.92, t0);
+      src.frequency.linearRampToValueAtTime(f0 * 1.32, t0 + dur * 0.35);
+      src.frequency.linearRampToValueAtTime(f0 * 0.86, t0 + dur);
+      // 两个共振峰，由 "ee/eh" 滑向 "ow"，形成"喵"的元音
+      const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 5;
+      f1.frequency.setValueAtTime(1100, t0); f1.frequency.linearRampToValueAtTime(720, t0 + dur);
+      const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.Q.value = 6;
+      f2.frequency.setValueAtTime(2200, t0); f2.frequency.linearRampToValueAtTime(1300, t0 + dur);
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3500;
+      const g = c.createGain(); g.gain.value = 0;
+      src.connect(f1); src.connect(f2); f1.connect(lp); f2.connect(lp); lp.connect(g); g.connect(out);
+      // 轻微的兴奋颤动（像狩猎时的"啾啾"）
+      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 26;
+      const lg = c.createGain(); lg.gain.value = 0.05;
+      lfo.connect(lg); lg.connect(g.gain); lfo.start();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.13, t0 + 0.03);
+      g.gain.setValueAtTime(0.13, t0 + dur * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.05);
+      src.start(t0); src.stop(t0 + dur + 0.1);
+      lfo.stop(t0 + dur + 0.1);
+    },
     /* 一声木鱼：空心木头的"笃"——一个快速衰减的木质共鸣 + 起音的敲击声 */
     woodfish(out) {
       const c = this.ctx, t0 = c.currentTime;
@@ -2592,6 +2621,7 @@
           if (Math.abs(prey.x - c.x) < W * 0.02) {
             c.state = 'pounce';
             c.jump = 0;
+            sfx('meow');   // 扑蝴蝶的一瞬间叫一声
             prey.vx = c.dir * Math.max(24, Math.abs(prey.vx)) * 2.2; // 蝴蝶受惊飞走
             prey.dur = Math.min(prey.dur, prey.life + 2.5);
             prey.scared = true;
