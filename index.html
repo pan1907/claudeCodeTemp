@@ -1283,7 +1283,7 @@
       // 睡莲叶 + 一朵睡莲
       this.pads = Array.from({ length: 7 }, () => ({
         x: rand(W * 0.12, W * 0.88), y: rand(wy + 26, H - 36),
-        r: rand(22, 46), phase: rand(0, 7), tone: rand(0, 1),
+        r: rand(30, 52), phase: rand(0, 7), tone: rand(0, 1),
       }));
       this.lily = { x: W * 0.36, y: wy + (H - wy) * 0.52 };
       this.frogs = [];         // 青蛙们（每片睡莲叶上最多一只）
@@ -1480,10 +1480,10 @@
         y: rand(wy + 46, H - 26),
       };
     },
-    // 屏幕上所有可以落脚的睡莲叶（含开花那片）
+    // 屏幕上所有可以落脚的睡莲叶（含开花那片）：cy=叶垫中心，sy=青蛙落脚处，r/ky=椭圆判定
     perches() {
-      const list = this.pads.map((p, i) => ({ x: p.x, y: p.y - 3, key: 'p' + i }));
-      list.push({ x: this.lily.x, y: this.lily.y - 4, key: 'lily' });
+      const list = this.pads.map((p, i) => ({ key: 'p' + i, x: p.x, cy: p.y, sy: p.y - 3, r: p.r, ky: 0.34 }));
+      list.push({ key: 'lily', x: this.lily.x, cy: this.lily.y, sy: this.lily.y - 4, r: 26, ky: 0.62 });
       return list;
     },
     stepFrog(dt, t) {
@@ -1651,12 +1651,13 @@
     tap(x, y) {
       const wy = this.waterY();
       // 点到任意一片睡莲叶：唤来一只青蛙跳上去（该叶已有青蛙则提前请它跳回水里）
-      let best = null, bd = 1e9;
+      // 按每片叶垫的真实大小做椭圆判定（叶垫是扁的），整片叶子 + 一点余量都可点
+      let best = null, bn = 1e9;
       for (const pe of this.perches()) {
-        const d = Math.hypot(x - pe.x, (y - pe.y) * 1.7); // 叶垫是扁的，纵向更敏感
-        if (d < bd) { bd = d; best = pe; }
+        const n = Math.hypot(x - pe.x, (y - pe.cy) / pe.ky) / (pe.r + 18);
+        if (n < bn) { bn = n; best = pe; }
       }
-      if (best && bd < 52) {
+      if (best && bn < 1) {
         const here = this.frogs.find(f => f.key === best.key);
         if (here) {
           if (here.state === 'sit') here.sitDur = 0; // 安排它跳回水里
@@ -1666,7 +1667,7 @@
           const wp = this.waterPoint();
           this.frogs.push({
             key: best.key, state: 'jumpIn', t: 0, dur: rand(0.8, 1.0),
-            x: wp.x, y: wp.y, sx: wp.x, sy: wp.y, tx: best.x, ty: best.y,
+            x: wp.x, y: wp.y, sx: wp.x, sy: wp.y, tx: best.x, ty: best.sy,
             dir: best.x >= wp.x ? 1 : -1,
             jumpH: 90 + Math.abs(best.x - wp.x) * 0.25,
             leap: 0, tilt: 0, inflate: 0,
