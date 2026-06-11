@@ -336,28 +336,32 @@
     },
     /* 一声蟋蟀：高频正弦的几个短脉冲 */
     cricket(out) {
+      // 真实蟋蟀：~4.7kHz 的近纯音载波，结组成 chirp——3~4 个软起软落的脉冲、音节率约 30Hz；
+      // 加一点二次谐波，避免过于纯净的电子感
       const c = this.ctx, t0 = c.currentTime;
-      const osc = c.createOscillator();
-      osc.frequency.value = rand(4000, 4600);
-      const g = c.createGain();
-      g.gain.value = 0;
+      const f0 = rand(4400, 5000);
+      const o1 = c.createOscillator(); o1.type = 'sine'; o1.frequency.value = f0;
+      const o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = f0 * 2;
+      const o2g = c.createGain(); o2g.gain.value = 0.13;
+      const g = c.createGain(); g.gain.value = 0;
       let tail = out;
       if (c.createStereoPanner) {
         const pan = c.createStereoPanner();
-        pan.pan.value = rand(-0.8, 0.8);
+        pan.pan.value = rand(-0.7, 0.7);
         pan.connect(out);
         tail = pan;
       }
-      osc.connect(g); g.connect(tail);
-      const pulses = 3 + Math.floor(Math.random() * 3);
+      o1.connect(g); o2.connect(o2g); o2g.connect(g); g.connect(tail);
+      const pulses = 3 + Math.floor(Math.random() * 2);  // 3~4 个脉冲为一声
+      const period = rand(0.028, 0.034);                 // ~30Hz 音节率
       for (let i = 0; i < pulses; i++) {
-        const tp = t0 + i * 0.075;
-        g.gain.setValueAtTime(0, tp);
-        g.gain.linearRampToValueAtTime(0.012, tp + 0.02);
-        g.gain.linearRampToValueAtTime(0, tp + 0.06);
+        const tp = t0 + i * period;
+        g.gain.setValueAtTime(0.0001, tp);
+        g.gain.linearRampToValueAtTime(0.05, tp + 0.004);              // 软起
+        g.gain.exponentialRampToValueAtTime(0.0001, tp + period * 0.7); // 软落
       }
-      osc.start(t0);
-      osc.stop(t0 + pulses * 0.075 + 0.1);
+      const end = t0 + pulses * period + 0.06;
+      o1.start(t0); o2.start(t0); o1.stop(end); o2.stop(end);
     },
     /* 一声鸟鸣：两三个快速滑动的短音节 */
     bird(out) {
@@ -469,6 +473,36 @@
       const t0 = c.currentTime;
       doCroak(t0);
       if (Math.random() < 0.6) doCroak(t0 + rand(0.34, 0.5));  // "呱…呱"
+    },
+    /* 一声木鱼：空心木头的"笃"——一个快速衰减的木质共鸣 + 起音的敲击声 */
+    woodfish(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const g = c.createGain();
+      g.gain.value = 0;
+      g.connect(out);
+      // 木质共鸣体：两个相近的低中频，快速衰减
+      [430, 650].forEach((fr, i) => {
+        const o = c.createOscillator();
+        o.type = i ? 'sine' : 'triangle';
+        o.frequency.setValueAtTime(fr * 1.05, t0);
+        o.frequency.exponentialRampToValueAtTime(fr, t0 + 0.04);
+        const og = c.createGain();
+        og.gain.value = i ? 0.4 : 1;
+        o.connect(og); og.connect(g);
+        o.start(t0); o.stop(t0 + 0.4);
+      });
+      // 敲击的"嗒"——一小撮带通噪声
+      const ns = this.noise();
+      const nf = c.createBiquadFilter();
+      nf.type = 'bandpass'; nf.frequency.value = 1800; nf.Q.value = 1.2;
+      const ng = c.createGain(); ng.gain.value = 0;
+      ns.connect(nf); nf.connect(ng); ng.connect(out);
+      ng.gain.setValueAtTime(0.06, t0);
+      ng.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.04);
+      ns.stop(t0 + 0.06);
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.16, t0 + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
     },
     /* 一声轻钟：基音加一个八度泛音，缓缓衰减 */
     chime(out) {
@@ -875,33 +909,46 @@
       this.splashAt(x0, 0.8);                // 出水的水花
       sfx('splash');
     },
-    /* 海浪：低频噪声，音量像潮水一样一阵阵起伏 */
-    /* 潮声：白天饱满、夜里更安静更绵长（音量与亮度随真实昼夜起伏） */
+    /* 潮声：低沉的远景海面（调小）+ 每隔一阵一道近处拍岸的"哗"，让近浪更分明 */
     sound(A, out) {
       const c = A.ctx;
+      // 远景海面：低频噪声打底，调得更轻
       const src = A.noise();
       const f = c.createBiquadFilter();
       f.type = 'lowpass';
-      f.frequency.value = 420;
+      f.frequency.value = 360;
       const g = c.createGain();
-      g.gain.value = 0.30;
+      g.gain.value = 0.14;
       src.connect(f); f.connect(g); g.connect(out);
-      // 比之前更慢的两个起伏，让浪涌更绵长
       const lfo1 = c.createOscillator(); lfo1.frequency.value = 0.05;
-      const lg1 = c.createGain(); lg1.gain.value = 0.15;
+      const lg1 = c.createGain(); lg1.gain.value = 0.07;
       lfo1.connect(lg1); lg1.connect(g.gain); lfo1.start();
-      const lfo2 = c.createOscillator(); lfo2.frequency.value = 0.028;
-      const lg2 = c.createGain(); lg2.gain.value = 0.09;
-      lfo2.connect(lg2); lg2.connect(g.gain); lfo2.start();
+      // 近处拍岸的一道浪：较亮的噪声涌起再退去
+      const wsrc = A.noise();
+      const wf = c.createBiquadFilter();
+      wf.type = 'bandpass'; wf.frequency.value = 700; wf.Q.value = 0.5;
+      const wg = c.createGain(); wg.gain.value = 0;
+      wsrc.connect(wf); wf.connect(wg); wg.connect(out);
+      let nextWash = rand(2, 5);
       return {
         update(t) {
           const na = nightAmt(dayFrac());
-          // 夜里：音量更低、声音更闷（浪声拉得更长更柔）
-          g.gain.setTargetAtTime(0.30 - 0.16 * na, c.currentTime, 0.5);
-          f.frequency.setTargetAtTime(420 - 170 * na, c.currentTime, 0.5);
-          lfo1.frequency.setTargetAtTime(0.05 - 0.018 * na, c.currentTime, 0.5);
+          g.gain.setTargetAtTime(0.13 - 0.06 * na, c.currentTime, 0.5);
+          f.frequency.setTargetAtTime(360 - 130 * na, c.currentTime, 0.5);
+          // 一道拍岸浪：约 6~12 秒一次，涌起约 1 秒、退去约 2 秒
+          if (t >= nextWash) {
+            nextWash = t + rand(6, 12);
+            const t0 = c.currentTime, peak = (0.22 - 0.1 * na);
+            wf.frequency.setValueAtTime(500, t0);
+            wf.frequency.linearRampToValueAtTime(1100, t0 + 1.0);
+            wf.frequency.linearRampToValueAtTime(600, t0 + 3.2);
+            wg.gain.cancelScheduledValues(t0);
+            wg.gain.setValueAtTime(Math.max(0.0001, wg.gain.value), t0);
+            wg.gain.linearRampToValueAtTime(peak, t0 + 1.0);   // 涌上来
+            wg.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.4); // 退下去
+          }
         },
-        dispose() { stopAll([src, lfo1, lfo2]); },
+        dispose() { stopAll([src, lfo1, wsrc]); },
       };
     },
   };
@@ -1050,11 +1097,11 @@
         g.gain.linearRampToValueAtTime(0.022, t0 + 0.4);
         g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.0);
       };
-      let next = rand(6, 12);
+      let next = rand(20, 40);
       return {
         update(t) {
           if (t < next) return;
-          next = t + rand(10, 20);
+          next = t + rand(50, 75);   // 约一分钟才轻响一声
           shimmer();
         },
       };
@@ -1138,26 +1185,11 @@
       const { k } = breathState(performance.now() / 1000);
       const rMin = Math.min(W, H) * 0.10, rMax = Math.min(W, H) * 0.22;
       if (this.rings.length < 5) this.rings.push({ r0: rMin + (rMax - rMin) * k, life: 0 });
-      sfx('chime');
+      sfx('woodfish');   // 点一下敲一声木鱼
     },
-    /* 呼吸：气流声随圆球同步起伏 */
-    sound(A, out) {
-      const c = A.ctx;
-      const src = A.noise();
-      const f = c.createBiquadFilter();
-      f.type = 'bandpass';
-      f.frequency.value = 500;
-      f.Q.value = 0.4;
-      const g = c.createGain();
-      g.gain.value = 0;
-      src.connect(f); f.connect(g); g.connect(out);
-      return {
-        update(t) {
-          const { k } = breathState(t);
-          g.gain.setTargetAtTime(0.03 + 0.20 * k, c.currentTime, 0.15);
-        },
-        dispose() { stopAll([src]); },
-      };
+    /* 呼吸：无持续背景音，只有点击时敲一声木鱼 */
+    sound() {
+      return {};
     },
   };
 
@@ -1936,7 +1968,7 @@
     },
     /* 昼夜：旷野的风；有鸟群飞过时才有鸟鸣 */
     sound(A, out) {
-      const nodes = A.wind(out, { vol: 0.14, cutoff: 240 });
+      const nodes = A.wind(out, { vol: 0.07, cutoff: 240 });
       const self = this;
       let next = 0;
       return {
