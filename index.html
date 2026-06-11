@@ -1503,28 +1503,32 @@
         r: rand(0.4, 1.3), phase: rand(0, 7), blink: rand(0.3, 1),
       }));
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
-      const tR = Math.min(W, H) * 0.072;
+      const tR = Math.min(W, H) * 0.082;
       this.tree0 = {
         x: W * 0.795, R: tR,
+        // 错落不对称的枝桠：左密右疏、高低长短各异
         branches: [
-          { h: 0.46, side: -1, len: 1.00, lift: 0.50, twig: true },
-          { h: 0.38, side: 1,  len: 0.90, lift: 0.62, twig: false },
-          { h: 0.26, side: -1, len: 0.72, lift: 0.85, twig: true },
-          { h: 0.18, side: 1,  len: 0.80, lift: 0.95, twig: true },
-          { h: 0.08, side: -1, len: 0.50, lift: 1.15, twig: false },
-          { h: 0.02, side: 1,  len: 0.42, lift: 1.25, twig: false },
-          { h: 0.00, side: 0.2, len: 0.10, lift: 1.45, twig: false }, // 顶梢
-        ].map(b => ({ ...b, len: b.len * rand(0.92, 1.08) })),
-        clusters: Array.from({ length: 22 }, () => {
+          { h: 0.50, side: -1.05, len: 1.08, lift: 0.40, twig: true },
+          { h: 0.45, side: 0.65,  len: 0.74, lift: 0.70, twig: true },
+          { h: 0.36, side: 1.10,  len: 1.02, lift: 0.52, twig: true },
+          { h: 0.31, side: -0.80, len: 0.60, lift: 0.96, twig: false },
+          { h: 0.22, side: -1.12, len: 0.92, lift: 0.74, twig: true },
+          { h: 0.16, side: 0.92,  len: 0.78, lift: 1.00, twig: false },
+          { h: 0.09, side: -0.45, len: 0.46, lift: 1.22, twig: true },
+          { h: 0.04, side: 0.40,  len: 0.54, lift: 1.16, twig: false },
+          { h: 0.00, side: -0.12, len: 0.16, lift: 1.46, twig: false }, // 顶梢
+        ].map(b => ({ ...b, len: b.len * rand(0.9, 1.12), lift: b.lift * rand(0.92, 1.08) })),
+        // 更大、更饱满的树冠
+        clusters: Array.from({ length: 32 }, () => {
           const ang = rand(0, Math.PI * 2), rr = Math.sqrt(Math.random());
           return {
-            dx: Math.cos(ang) * tR * rr,
-            dy: -Math.sin(ang) * tR * 0.82 * rr - tR * 0.12,
-            r: rand(tR * 0.30, tR * 0.46), ph: rand(0, 7),
+            dx: Math.cos(ang) * tR * 1.25 * rr,
+            dy: -Math.sin(ang) * tR * 1.0 * rr - tR * 0.18,
+            r: rand(tR * 0.34, tR * 0.52), ph: rand(0, 7),
           };
         }),
-        apples: Array.from({ length: 8 }, () => ({ dx: rand(-tR * 0.8, tR * 0.8), dy: rand(-tR * 0.5, tR * 0.45) })),
-        blossoms: Array.from({ length: 16 }, () => ({ dx: rand(-tR * 0.85, tR * 0.85), dy: rand(-tR * 0.75, tR * 0.3) })),
+        apples: Array.from({ length: 14 }, () => ({ dx: rand(-tR * 1.05, tR * 1.05), dy: rand(-tR * 0.7, tR * 0.5) })),
+        blossoms: Array.from({ length: 22 }, () => ({ dx: rand(-tR * 1.1, tR * 1.1), dy: rand(-tR * 0.95, tR * 0.35) })),
       };
     },
     seed(x, grow) {
@@ -1941,25 +1945,35 @@
         }
       }
 
-      // 谷垛
+      // 草垛：收割后堆在地上的圆鼓草堆
       for (const sv of this.sheaves) {
         const sh = 1 - 0.5 * nk;
-        const hh = H * 0.05;
-        ctx.strokeStyle = `rgba(${198 * sh | 0},${152 * sh | 0},${66 * sh | 0},0.95)`;
-        ctx.lineWidth = 2.4;
+        const w = sv.s, hh = sv.s * 0.85;
+        const x = sv.x;
+        const grad = ctx.createLinearGradient(0, hY - hh, 0, hY);
+        grad.addColorStop(0, `rgb(${226 * sh | 0},${190 * sh | 0},${104 * sh | 0})`);
+        grad.addColorStop(1, `rgb(${176 * sh | 0},${134 * sh | 0},${60 * sh | 0})`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(x - w, hY);
+        ctx.bezierCurveTo(x - w, hY - hh * 0.85, x - w * 0.55, hY - hh, x, hY - hh);
+        ctx.bezierCurveTo(x + w * 0.55, hY - hh, x + w, hY - hh * 0.85, x + w, hY);
+        ctx.closePath();
+        ctx.fill();
+        // 顶上的一小撮
+        ctx.beginPath();
+        ctx.ellipse(x + w * 0.05, hY - hh, w * 0.18, hh * 0.16, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // 草秆纹理
+        ctx.strokeStyle = `rgba(${150 * sh | 0},${112 * sh | 0},${50 * sh | 0},0.5)`;
+        ctx.lineWidth = 1;
         ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(sv.x - hh * 0.4, hY);
-        ctx.lineTo(sv.x, hY - hh);
-        ctx.moveTo(sv.x + hh * 0.4, hY);
-        ctx.lineTo(sv.x, hY - hh);
-        ctx.moveTo(sv.x - hh * 0.05, hY);
-        ctx.lineTo(sv.x + hh * 0.06, hY - hh * 0.96);
-        ctx.stroke();
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.arc(sv.x, hY - hh * 0.62, hh * 0.14, 0, Math.PI * 2);
-        ctx.stroke();
+        for (let i = -2; i <= 2; i++) {
+          ctx.beginPath();
+          ctx.moveTo(x + i * w * 0.32, hY);
+          ctx.quadraticCurveTo(x + i * w * 0.22, hY - hh * 0.6, x + i * w * 0.12, hY - hh * 0.92);
+          ctx.stroke();
+        }
       }
 
       // 积雪薄薄盖在田土上
@@ -1992,10 +2006,8 @@
           fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'sow';
         } else if (si === 1 && st.sp > 0.04 && st.sp < 0.58) {  // 夏：缓步浇水
           fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'water';
-        } else if (si === 2 && st.sp > 0.05 && st.sp < 0.26) {  // 秋：背手查看长势
-          fx = W * (0.10 + 0.52 * (st.sp - 0.05) / 0.21); action = 'walk';
-        } else if (si === 2 && st.sp >= 0.28 && st.sp < 0.60) { // 秋：挥镰收割
-          const hp = (st.sp - 0.28) / 0.32;
+        } else if (si === 2 && st.sp > 0.06 && st.sp < 0.60) {  // 秋：挥镰收割（只此一趟，贯穿整个白天）
+          const hp = (st.sp - 0.06) / 0.54;
           fx = W * (0.05 + 0.71 * hp);
           action = 'cut';
           for (const c of this.crops) {
@@ -2005,10 +2017,11 @@
               for (let i = 0; i < 2; i++) this.spawnPart(c.x, hY - h * 0.7, [232, 190, 92], -30, 130, rand(0.9, 1.4));
             }
           }
-          const seg = Math.floor((fx / W) * 8);
-          if (seg > this.lastSheaf && seg >= 1 && seg <= 6) {
+          // 沿途隔一段堆起一座草垛
+          const seg = Math.floor((fx / W) * 7);
+          if (seg > this.lastSheaf && seg >= 1 && seg <= 5) {
             this.lastSheaf = seg;
-            this.sheaves.push({ x: W * (seg / 8) + rand(-12, 12) });
+            this.sheaves.push({ x: W * (seg / 7) + rand(-10, 10), s: rand(H * 0.052, H * 0.075) });
           }
         }
       }
