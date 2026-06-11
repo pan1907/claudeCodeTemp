@@ -1306,6 +1306,7 @@
       }));
       this.lily = { x: W * 0.36, y: wy + (H - wy) * 0.52 };
       this.frogs = [];         // 青蛙们（每片睡莲叶上最多一只）
+      this.nextFrog = rand(6, 14);  // 隔一阵自己跳上来一只
       this.sdrops = [];        // 跳水溅起的水珠
       // 框住画面的枝叶（左上、右上、右下垂枝）+ 每根枝上的叶子
       const branchDefs = [
@@ -1506,6 +1507,15 @@
       return list;
     },
     stepFrog(dt, t) {
+      // 没人点的时候，也会隔一阵自己挑一片空叶子跳上来一只（控制在 3 只以内）
+      this.nextFrog -= dt;
+      if (this.nextFrog <= 0) {
+        this.nextFrog = rand(12, 22);
+        if (this.frogs.length < 3) {
+          const free = this.perches().filter(pe => !this.frogs.some(f => f.key === pe.key));
+          if (free.length) this.summonFrog(free[Math.floor(Math.random() * free.length)]);
+        }
+      }
       for (let i = this.frogs.length - 1; i >= 0; i--) {
         const f = this.frogs[i];
         f.t += dt;
@@ -1667,6 +1677,21 @@
         this.leafShape(lf.bx + dx, lf.by + Math.sin(t * 0.8 + lf.phase) * 2, lf.len, lf.ang0 + swayA, lf.col, lf.a);
       }
     },
+    // 让一只青蛙从水里跳上指定叶垫
+    summonFrog(perch) {
+      if (this.frogs.length >= 9) return false;
+      if (this.frogs.some(f => f.key === perch.key)) return false; // 这片叶子已有青蛙
+      const wp = this.waterPoint();
+      this.frogs.push({
+        key: perch.key, state: 'jumpIn', t: 0, dur: rand(0.8, 1.0),
+        x: wp.x, y: wp.y, sx: wp.x, sy: wp.y, tx: perch.x, ty: perch.sy,
+        dir: perch.x >= wp.x ? 1 : -1,
+        jumpH: 90 + Math.abs(perch.x - wp.x) * 0.25,
+        leap: 0, tilt: 0, inflate: 0,
+      });
+      this.frogSplash(wp.x, wp.y, 1.0); // 出水的水花
+      return true;
+    },
     tap(x, y) {
       const wy = this.waterY();
       // 点到任意一片睡莲叶：唤来一只青蛙跳上去（该叶已有青蛙则提前请它跳回水里）
@@ -1682,18 +1707,7 @@
           if (here.state === 'sit') here.sitDur = 0; // 安排它跳回水里
           return;
         }
-        if (this.frogs.length < 9) {
-          const wp = this.waterPoint();
-          this.frogs.push({
-            key: best.key, state: 'jumpIn', t: 0, dur: rand(0.8, 1.0),
-            x: wp.x, y: wp.y, sx: wp.x, sy: wp.y, tx: best.x, ty: best.sy,
-            dir: best.x >= wp.x ? 1 : -1,
-            jumpH: 90 + Math.abs(best.x - wp.x) * 0.25,
-            leap: 0, tilt: 0, inflate: 0,
-          });
-          this.frogSplash(wp.x, wp.y, 1.0); // 出水的水花
-          return;
-        }
+        if (this.summonFrog(best)) return;
       }
       const ty = Math.max(y, wy + 8); // 涟漪只落在池面上
       for (let i = 0; i < 3 && this.ripples.length < 60; i++) {
