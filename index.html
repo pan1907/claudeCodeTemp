@@ -611,16 +611,15 @@
       }
     },
     /* 夏夜：轻微的夜风 + 蟋蟀 */
+    /* 夏夜：不铺底音，只有偶尔一声蟋蟀 */
     sound(A, out) {
-      const nodes = A.wind(out, { vol: 0.08, cutoff: 260 });
-      let next = 0;
+      let next = rand(2, 4);
       return {
         update(t) {
           if (t < next) return;
-          next = t + rand(0.7, 2.2);
+          next = t + rand(3, 5);
           A.cricket(out);
         },
-        dispose() { stopAll(nodes); },
       };
     },
   };
@@ -819,6 +818,7 @@
       sfx('splash');
     },
     /* 海浪：低频噪声，音量像潮水一样一阵阵起伏 */
+    /* 潮声：白天饱满、夜里更安静更绵长（音量与亮度随真实昼夜起伏） */
     sound(A, out) {
       const c = A.ctx;
       const src = A.noise();
@@ -826,15 +826,25 @@
       f.type = 'lowpass';
       f.frequency.value = 420;
       const g = c.createGain();
-      g.gain.value = 0.32;
+      g.gain.value = 0.30;
       src.connect(f); f.connect(g); g.connect(out);
-      const lfo1 = c.createOscillator(); lfo1.frequency.value = 0.07;
-      const lg1 = c.createGain(); lg1.gain.value = 0.16;
+      // 比之前更慢的两个起伏，让浪涌更绵长
+      const lfo1 = c.createOscillator(); lfo1.frequency.value = 0.05;
+      const lg1 = c.createGain(); lg1.gain.value = 0.15;
       lfo1.connect(lg1); lg1.connect(g.gain); lfo1.start();
-      const lfo2 = c.createOscillator(); lfo2.frequency.value = 0.043;
-      const lg2 = c.createGain(); lg2.gain.value = 0.10;
+      const lfo2 = c.createOscillator(); lfo2.frequency.value = 0.028;
+      const lg2 = c.createGain(); lg2.gain.value = 0.09;
       lfo2.connect(lg2); lg2.connect(g.gain); lfo2.start();
-      return { dispose() { stopAll([src, lfo1, lfo2]); } };
+      return {
+        update(t) {
+          const na = nightAmt(dayFrac());
+          // 夜里：音量更低、声音更闷（浪声拉得更长更柔）
+          g.gain.setTargetAtTime(0.30 - 0.16 * na, c.currentTime, 0.5);
+          f.frequency.setTargetAtTime(420 - 170 * na, c.currentTime, 0.5);
+          lfo1.frequency.setTargetAtTime(0.05 - 0.018 * na, c.currentTime, 0.5);
+        },
+        dispose() { stopAll([src, lfo1, lfo2]); },
+      };
     },
   };
 
@@ -960,19 +970,36 @@
       }
       if (!hit) this.meteor = { x, y, life: 0 };
     },
-    /* 星夜：极轻的低音长音，近乎寂静 */
+    /* 星夜：不铺底音，只偶尔一声极轻的高音泛响，像远处的风铃 */
     sound(A, out) {
       const c = A.ctx;
-      const o1 = c.createOscillator(); o1.frequency.value = 96;
-      const o2 = c.createOscillator(); o2.frequency.value = 144.5;
-      const f = c.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 300;
-      const g = c.createGain(); g.gain.value = 0.045;
-      o1.connect(f); o2.connect(f); f.connect(g); g.connect(out);
-      o1.start(); o2.start();
-      const lfo = c.createOscillator(); lfo.frequency.value = 0.03;
-      const lg = c.createGain(); lg.gain.value = 0.02;
-      lfo.connect(lg); lg.connect(g.gain); lfo.start();
-      return { dispose() { stopAll([o1, o2, lfo]); } };
+      const shimmer = () => {
+        const t0 = c.currentTime;
+        const g = c.createGain();
+        g.gain.value = 0;
+        g.connect(out);
+        // 一个柔和的五度，缓起缓落
+        [1568, 2349.3].forEach((fr, i) => {
+          const o = c.createOscillator();
+          o.type = 'sine';
+          o.frequency.value = fr * rand(0.997, 1.003);
+          const og = c.createGain();
+          og.gain.value = i ? 0.4 : 1;
+          o.connect(og); og.connect(g);
+          o.start(t0); o.stop(t0 + 3.2);
+        });
+        g.gain.setValueAtTime(0, t0);
+        g.gain.linearRampToValueAtTime(0.022, t0 + 0.4);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.0);
+      };
+      let next = rand(6, 12);
+      return {
+        update(t) {
+          if (t < next) return;
+          next = t + rand(10, 20);
+          shimmer();
+        },
+      };
     },
   };
 
@@ -1081,19 +1108,27 @@
     name: '落雪',
     flakes: [],
     puffs: [],
+    baseN: 0,
+    windInten: 0,
+    phA: 0, phB: 0,
     init() {
       this.inited = true;
-      const n = Math.round(Math.min(160, W * H / 9000));
-      this.flakes = Array.from({ length: n }, () => this.make(true));
+      this.baseN = Math.round(Math.min(160, W * H / 9000));
+      this.flakes = Array.from({ length: this.baseN }, () => this.make(true));
       this.puffs = [];
+      this.phA = rand(0, 7);
+      this.phB = rand(0, 7);
     },
     make(anyY) {
       const depth = rand(0.3, 1);
+      // 整体放慢；约两成是下得快一点的雪
+      const fast = Math.random() < 0.2 ? rand(1.6, 2.2) : 1;
       return {
         x: rand(0, W),
         y: anyY ? rand(0, H) : -10,
+        depth,
         r: 1 + depth * 2.2,
-        vy: 12 + depth * 26,
+        vy: (7 + depth * 15) * fast,
         vx: 0,
         sway: rand(0.3, 0.8),
         phase: rand(0, Math.PI * 2),
@@ -1103,16 +1138,34 @@
     draw(dt, t) {
       bgGradient([[0, '#1d2433'], [0.7, '#27304a'], [1, '#323c5c']]);
 
-      for (let i = 0; i < this.flakes.length; i++) {
+      // 风：强度与方向都随时间缓慢起伏
+      const inten = 0.5 + 0.5 * Math.sin(t * 0.05 + this.phA);   // 0~1 雪势
+      const gust = Math.sin(t * 0.08 + this.phB);                 // -1~1 风向风力
+      this.windInten = inten;
+      const windX = gust * (30 + 130 * inten);
+
+      // 雪势大时雪更密，小时更疏（动态增减雪花）
+      const target = Math.round(this.baseN * (0.35 + 0.65 * inten));
+
+      for (let i = this.flakes.length - 1; i >= 0; i--) {
         const f = this.flakes[i];
         f.y += f.vy * dt;
-        f.vx *= Math.exp(-2.2 * dt); // 被风吹开后缓缓恢复
-        f.x += f.vx * dt + Math.sin(t * f.sway + f.phase) * 10 * dt;
-        if (f.y > H + 10) this.flakes[i] = this.make(false);
+        f.vx *= Math.exp(-2.2 * dt); // 被点击吹开后缓缓恢复
+        f.x += (f.vx + windX * f.depth) * dt + Math.sin(t * f.sway + f.phase) * 8 * dt;
+        if (f.x < -20) f.x = W + 20; else if (f.x > W + 20) f.x = -20;
+        if (f.y > H + 10) {
+          if (this.flakes.length > target) { this.flakes.splice(i, 1); continue; }
+          this.flakes[i] = this.make(false);
+          continue;
+        }
         ctx.fillStyle = `rgba(240, 245, 255, ${f.alpha})`;
         ctx.beginPath();
         ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // 雪势变大时，从上方补充新的雪花
+      if (this.flakes.length < target && Math.random() < dt * 30) {
+        this.flakes.push(this.make(false));
       }
 
       // 点击处一团雪雾般的白晕散开
@@ -1142,10 +1195,25 @@
       }
       if (this.puffs.length < 6) this.puffs.push({ x, y, life: 0 });
     },
-    /* 落雪：清冷绵长的风声 */
+    /* 落雪：清冷的风声，强度随雪势时大时小 */
     sound(A, out) {
-      const nodes = A.wind(out, { vol: 0.20, cutoff: 200 });
-      return { dispose() { stopAll(nodes); } };
+      const c = A.ctx;
+      const src = A.noise();
+      const f = c.createBiquadFilter();
+      f.type = 'lowpass';
+      f.frequency.value = 200;
+      const g = c.createGain();
+      g.gain.value = 0.12;
+      src.connect(f); f.connect(g); g.connect(out);
+      const self = this;
+      return {
+        update() {
+          const inten = self.windInten || 0;
+          g.gain.setTargetAtTime(0.07 + 0.22 * inten, c.currentTime, 0.5);
+          f.frequency.setTargetAtTime(140 + 230 * inten, c.currentTime, 0.5);
+        },
+        dispose() { stopAll([src]); },
+      };
     },
   };
 
@@ -1218,28 +1286,32 @@
       }
       sfx('droplet');
     },
-    /* 落雨：连绵的雨声 + 偶尔清脆的水滴 */
+    /* 落雨：雨声明显地时大时小（雨幕时密时疏），偶尔一滴清脆的水声 */
     sound(A, out) {
       const c = A.ctx;
       const src = A.noise();
       const f = c.createBiquadFilter();
       f.type = 'bandpass';
-      f.frequency.value = 1600;
+      f.frequency.value = 1500;
       f.Q.value = 0.4;
       const g = c.createGain();
-      g.gain.value = 0.16;
+      g.gain.value = 0.12;
       src.connect(f); f.connect(g); g.connect(out);
-      const lfo = c.createOscillator(); lfo.frequency.value = 0.09;
-      const lg = c.createGain(); lg.gain.value = 0.03;
-      lfo.connect(lg); lg.connect(g.gain); lfo.start();
-      let next = 0;
+      const ph1 = rand(0, 7), ph2 = rand(0, 7);
+      let next = rand(1, 2);
       return {
         update(t) {
-          if (t < next) return;
-          next = t + rand(0.15, 0.5);
-          A.droplet(out);
+          // 两个慢波叠出明显的强弱起伏
+          const inten = Math.max(0, Math.min(1,
+            0.5 + 0.4 * Math.sin(t * 0.07 + ph1) + 0.22 * Math.sin(t * 0.019 + ph2)));
+          g.gain.setTargetAtTime(0.05 + 0.20 * inten, c.currentTime, 0.5);
+          f.frequency.setTargetAtTime(1000 + 1300 * inten, c.currentTime, 0.5);
+          if (t >= next) {
+            next = t + rand(1, 2);
+            A.droplet(out);
+          }
         },
-        dispose() { stopAll([src, lfo]); },
+        dispose() { stopAll([src]); },
       };
     },
   };
@@ -1295,6 +1367,7 @@
       }));
       this.birds = [];
       this.meteor = null;
+      this.nextFlock = rand(5, 12);
     },
     orbXY(q) {
       // 在天空中划过的弧线，q ∈ [0,1]
@@ -1380,6 +1453,23 @@
       }
       this.birds = this.birds.filter(b => b.x > -80 && b.x < W + 80);
 
+      // 白天偶尔有一群鸟自远处飞过
+      this.nextFlock -= dt;
+      if (na < 0.35 && this.nextFlock <= 0 && this.birds.length < 5) {
+        this.nextFlock = rand(14, 30);
+        const dir = Math.random() < 0.5 ? 1 : -1;
+        const x0 = dir > 0 ? -40 : W + 40;
+        const y0 = rand(H * 0.12, H * 0.34);
+        const m = 4 + Math.floor(Math.random() * 4);
+        for (let i = 0; i < m; i++) {
+          this.birds.push({
+            x: x0 - dir * i * 26 + rand(-8, 8),
+            y0: y0 + rand(-16, 16) - (i % 2) * 9,
+            vx: dir * rand(22, 32), phase: rand(0, Math.PI * 2),
+          });
+        }
+      }
+
       // 远近两层山丘剪影，颜色随昼夜变化
       const hillNear = lerpC([52, 84, 72], [10, 14, 26], na);
       const hillFar = lerpC([72, 108, 96], [16, 22, 38], na);
@@ -1417,16 +1507,16 @@
         }
       }
     },
-    /* 昼夜：旷野的风，入夜后传来蟋蟀声 */
+    /* 昼夜：旷野的风；有鸟群飞过时才有鸟鸣 */
     sound(A, out) {
       const nodes = A.wind(out, { vol: 0.14, cutoff: 240 });
       const self = this;
       let next = 0;
       return {
         update(t) {
-          if (nightAmt(self.lastD) < 0.5 || t < next) return;
-          next = t + rand(0.9, 2.6);
-          A.cricket(out);
+          if (nightAmt(self.lastD) > 0.45 || self.birds.length === 0 || t < next) return;
+          next = t + rand(3, 5);
+          A.bird(out);
         },
         dispose() { stopAll(nodes); },
       };
@@ -2126,6 +2216,7 @@
       const si = st.si, k = st.sp;
       const nk = seasonNight(st.sp);
       this.lastNk = nk;
+      this.lastSi = si;
       const A = SEASONS[si], B = SEASONS[(si + 1) % 4];
       const hY = this.horizon();
       // 天色与土色：季节之间过渡，再压上夜色
@@ -2419,7 +2510,7 @@
             for (let i = 0; i < 3; i++) this.spawnPart(c.x, hY - h * rand(0.4, 0.9), [232, 190, 92], -36, 130, rand(0.9, 1.5));
           }
         }
-        if (cutAny) { sfx('droplet'); return; }
+        if (cutAny) return;
       }
       // 其余时候：点哪儿就种下一株新苗（小屋边留空）
       if (!(x > W * 0.78 && x < W * 0.97)) {
@@ -2435,19 +2526,17 @@
       for (let i = 0; i < n; i++) {
         this.spawnPart(x + rand(-8, 8), (st.si === 3 ? y : hY) + rand(-6, 6), col, -22, 26, rand(1.4, 2.4));
       }
-      sfx('droplet');
     },
-    /* 种地：田野的轻风，白天鸟鸣、入夜虫声 */
+    /* 种地：田野的轻风；春夏秋的白天有鸟鸣，冬天与夜里只有风 */
     sound(A, out) {
       const nodes = A.wind(out, { vol: 0.07, cutoff: 300 });
       const self = this;
-      let next = 2;
+      let next = rand(3, 5);
       return {
         update(t) {
           if (t < next) return;
-          next = t + rand(1.6, 4.2);
-          if (self.lastNk > 0.5) A.cricket(out);
-          else A.bird(out);
+          next = t + rand(3, 5);
+          if (self.lastSi !== 3 && self.lastNk < 0.5) A.bird(out);
         },
         dispose() { stopAll(nodes); },
       };
