@@ -429,35 +429,46 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + rand(0.04, 0.09));
       src.stop(t0 + 0.12);
     },
-    /* 一声蛙鸣：2~3 声短促的"呱"，每声快起快落、带"啊"的共振峰与颗粒颤动 */
+    /* 一声蛙鸣：真实蛙鸣是"脉冲串"——每秒数十个短颗粒快速重复。
+       一段叫声 = 一串脉冲（先扬后抑、音高微微上扫）+ 一层噪声沙哑，"呱…呱"一两声 */
     croak(out) {
-      const c = this.ctx, t0 = c.currentTime;
-      const n = 2 + (Math.random() < 0.4 ? 1 : 0);
-      const base = rand(250, 305);
-      for (let i = 0; i < n; i++) {
-        const ts = t0 + i * rand(0.15, 0.21);
+      const c = this.ctx;
+      const doCroak = (t0) => {
+        const prr = rand(28, 46);          // 每秒脉冲数（蛙鸣的识别关键）
+        const dur = rand(0.25, 0.4);
+        const nP = Math.max(5, Math.round(dur * prr));
+        const f0 = rand(720, 1000);        // 主频
         const o = c.createOscillator();
         o.type = 'sawtooth';
-        o.frequency.setValueAtTime(base * 1.18, ts);
-        o.frequency.exponentialRampToValueAtTime(base * 0.82, ts + 0.12);
-        // "啊"的共振峰，让它像"呱"而不是嗡鸣
-        const bp = c.createBiquadFilter();
-        bp.type = 'bandpass'; bp.frequency.value = rand(760, 900); bp.Q.value = 3.5;
+        o.frequency.setValueAtTime(f0 * 0.9, t0);
+        o.frequency.linearRampToValueAtTime(f0 * 1.12, t0 + dur);  // 简单上扫
+        const form = c.createBiquadFilter();
+        form.type = 'bandpass'; form.frequency.value = f0 * 1.7; form.Q.value = 1.8;
         const lp = c.createBiquadFilter();
-        lp.type = 'lowpass'; lp.frequency.value = 2100;
-        const g = c.createGain(); g.gain.value = 0;
-        o.connect(bp); bp.connect(lp); lp.connect(g); g.connect(out);
-        // 快速方波颤动，给"呱"的颗粒感
-        const lfo = c.createOscillator();
-        lfo.type = 'square'; lfo.frequency.value = rand(50, 62);
-        const lg = c.createGain(); lg.gain.value = 0.42;
-        lfo.connect(lg); lg.connect(g.gain);
-        o.start(ts); lfo.start(ts);
-        g.gain.setValueAtTime(0, ts);
-        g.gain.linearRampToValueAtTime(0.11, ts + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.15);
-        o.stop(ts + 0.2); lfo.stop(ts + 0.2);
-      }
+        lp.type = 'lowpass'; lp.frequency.value = 2600;
+        const ns = this.noise();
+        const nf = c.createBiquadFilter();
+        nf.type = 'bandpass'; nf.frequency.value = 1500; nf.Q.value = 1.1;
+        const ng = c.createGain(); ng.gain.value = 0.5;
+        const cg = c.createGain(); cg.gain.value = 0.0008;   // 脉冲串的总包络
+        o.connect(form); form.connect(lp); lp.connect(cg);
+        ns.connect(nf); nf.connect(ng); ng.connect(cg);
+        cg.connect(out);
+        for (let i = 0; i < nP; i++) {
+          const tp = t0 + i / prr;
+          const env = Math.sin(Math.PI * (i + 0.5) / nP);     // 整体先扬后抑
+          const a = 0.6 * (0.3 + 0.7 * env);
+          cg.gain.setValueAtTime(0.0008, tp);
+          cg.gain.linearRampToValueAtTime(a, tp + 0.003);     // 快起
+          cg.gain.exponentialRampToValueAtTime(0.0008, tp + (1 / prr) * 0.62); // 快落
+        }
+        cg.gain.linearRampToValueAtTime(0.0001, t0 + dur + 0.03);
+        o.start(t0); o.stop(t0 + dur + 0.06);
+        ns.stop(t0 + dur + 0.06);
+      };
+      const t0 = c.currentTime;
+      doCroak(t0);
+      if (Math.random() < 0.6) doCroak(t0 + rand(0.34, 0.5));  // "呱…呱"
     },
     /* 一声轻钟：基音加一个八度泛音，缓缓衰减 */
     chime(out) {
