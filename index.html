@@ -3012,9 +3012,8 @@
         this.spawnPart(x + rand(-8, 8), (st.si === 3 ? y : hY) + rand(-6, 6), col, -22, 26, rand(1.4, 2.4));
       }
     },
-    /* 种地：田野的轻风；春夏秋的白天有鸟鸣（远处几只 + 近处偶尔一声），冬天与夜里只有风 */
+    /* 种地：无背景风声；只在春夏秋的白天有远近成群的鸟鸣 */
     sound(A, out) {
-      const nodes = A.wind(out, { vol: 0.07, cutoff: 300 });
       const self = this;
       let near = rand(3, 5), far = rand(1.5, 3);
       return {
@@ -3024,7 +3023,6 @@
           if (t >= far) { far = t + rand(1.5, 3.5); A.bird(out, rand(0.6, 1)); }
           if (t >= near) { near = t + rand(3, 5); A.bird(out, rand(0, 0.4)); }
         },
-        dispose() { stopAll(nodes); },
       };
     },
   };
