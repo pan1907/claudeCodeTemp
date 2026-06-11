@@ -1502,6 +1502,10 @@
         x: rand(0, W), y: rand(0, H * 0.5),
         r: rand(0.4, 1.3), phase: rand(0, 7), blink: rand(0.3, 1),
       }));
+      this.treeShake = 0;   // 摇树的余晃
+      this.treeSnow = 1;    // 树上积雪量（摇掉后慢慢再积起来）
+      this.snowPh = rand(0, 7);
+      this.cat = { x: W * 0.5, dir: 1, state: 'sit', timer: 3, target: W * 0.5, jump: 0 };
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
       this.tree0 = {
@@ -1536,6 +1540,45 @@
         x, base: rand(0.8, 1.2), sway: rand(0, Math.PI * 2),
         lean: rand(-0.12, 0.12), grow, cut: false,
       };
+    },
+    /* 造一只蝴蝶：从调色板随机挑 2-3 种颜色调出主色；约半数是双色的花蝴蝶。全场最多 9 只 */
+    spawnButterfly(x, y, vx) {
+      if (this.flutters.length >= 9) return;
+      const PAL = [
+        [255, 196, 70], [255, 122, 92], [156, 122, 224], [96, 168, 232],
+        [255, 152, 192], [244, 240, 232], [122, 200, 150], [240, 200, 60],
+      ];
+      const blend = (n) => {
+        let ws = 0, mix = [0, 0, 0];
+        for (let i = 0; i < n; i++) {
+          const c = PAL[Math.floor(Math.random() * PAL.length)];
+          const w = 0.3 + Math.random();
+          ws += w;
+          for (let k = 0; k < 3; k++) mix[k] += c[k] * w;
+        }
+        return mix.map(v => Math.round(v / ws));
+      };
+      this.flutters.push({
+        x, y, vx, phase: rand(0, 7), life: 0, dur: rand(10, 20),
+        c: blend(2 + (Math.random() < 0.5 ? 1 : 0)),
+        c2: Math.random() < 0.55 ? blend(2) : null,
+        size: rand(0.85, 1.3),
+      });
+    },
+    /* 冬天摇树：枝桠一抖，落下一蓬雪 */
+    shakeTree() {
+      const tr = this.tree0, hY = this.horizon();
+      this.treeShake = 1;
+      const cy = hY - tr.R * 1.55 - tr.R * 0.30;
+      for (let i = 0; i < 14 && this.parts.length < 110; i++) {
+        this.parts.push({
+          x: tr.x + rand(-tr.R * 1.1, tr.R * 1.1), y: cy + rand(-tr.R * 0.6, tr.R * 0.7),
+          vx: rand(-10, 10), vy: rand(5, 25), g: 230,
+          r: rand(1.6, 3.2), phase: rand(0, 7), life: 0, dur: rand(0.9, 1.5),
+          alpha: 0.9, c: [240, 245, 252],
+        });
+      }
+      this.treeSnow = 0.3;
     },
     horizon() { return H * 0.83; },  // 地平线靠下，田土只占薄薄一条
     cropH() { return H * 0.045; },   // 稻子比较矮，明显低于农人
@@ -1598,7 +1641,7 @@
       ctx.strokeStyle = col;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      const stride = Math.sin(t * 2.0) * 5;  // 缓慢的步态
+      const stride = (action === 'stand' || action === 'build') ? 2.2 : Math.sin(t * 2.0) * 5;  // 缓慢的步态
       // 腿：圆润的锥形
       ctx.lineWidth = 4.5;
       ctx.beginPath();
@@ -1606,7 +1649,7 @@
       ctx.moveTo(0, -24); ctx.quadraticCurveTo(-stride * 0.5, -12, -stride, 0);
       ctx.stroke();
       // 身体：一颗微微前倾的圆润豆形，从胯到肩一笔成形
-      const lean = action === 'cut' ? 5 : action === 'sow' ? 3.5 : 2.5;
+      const lean = action === 'cut' ? 5 : action === 'build' ? 6 : action === 'sow' ? 3.5 : 2.5;
       ctx.beginPath();
       ctx.moveTo(-5, -24);
       ctx.bezierCurveTo(-6.5, -36, lean - 4, -46, lean, -47);
@@ -1646,6 +1689,15 @@
         ctx.moveTo(14 + sweep, -37);
         ctx.quadraticCurveTo(26 + sweep, -36, 30 + sweep, -27);  // 镰刀弧刃
         ctx.stroke();
+      } else if (action === 'build') {
+        // 弯着腰、双手在身前忙活（堆雪人）
+        const bob = Math.sin(t * 2.4) * 3;
+        ctx.beginPath(); ctx.moveTo(lean, -42); ctx.quadraticCurveTo(8, -36 + bob, 12, -30 + bob); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(lean - 1, -40); ctx.quadraticCurveTo(7, -33 + bob, 11, -26 + bob); ctx.stroke();
+      } else if (action === 'stand') {
+        // 拢着手站着看
+        ctx.beginPath(); ctx.moveTo(lean, -43); ctx.quadraticCurveTo(5, -38, 4, -34); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(lean - 1, -43); ctx.quadraticCurveTo(-5, -38, -4, -34); ctx.stroke();
       } else {
         // 背着手查看长势
         ctx.beginPath(); ctx.moveTo(lean - 1, -43); ctx.quadraticCurveTo(-6, -38, -8, -33); ctx.stroke();
@@ -1653,7 +1705,7 @@
       ctx.restore();
     },
     /* 田边的小屋：日落后与冬日里，窗口透出暖光、烟囱升起炊烟 */
-    hut(nk, si, dt) {
+    hut(nk, si, dt, snowAmt) {
       const hY = this.horizon();
       const w = Math.min(W, H) * 0.13, h = w * 0.5;
       const x = W * 0.875;
@@ -1678,6 +1730,24 @@
       const lit = Math.max(nk, si === 3 ? 0.55 : 0);
       ctx.fillStyle = `rgba(255, 206, 120, ${0.10 + 0.78 * lit})`;
       ctx.fillRect(x - w * 0.32, hY - h * 0.60, w * 0.22, h * 0.28);
+      // 屋顶、烟囱与窗台的积雪
+      if (snowAmt > 0.02) {
+        const sa = `rgba(238, 242, 250, ${0.92 * snowAmt})`;
+        ctx.strokeStyle = sa;
+        ctx.lineCap = 'round';
+        ctx.lineWidth = w * 0.06;
+        ctx.beginPath();
+        ctx.moveTo(x - w * 0.56, hY - h - w * 0.02);
+        ctx.lineTo(x - w * 0.02, hY - h - w * 0.40);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + w * 0.02, hY - h - w * 0.40);
+        ctx.lineTo(x + w * 0.56, hY - h - w * 0.02);
+        ctx.stroke();
+        ctx.fillStyle = sa;
+        ctx.fillRect(x + w * 0.225, hY - h - w * 0.435, w * 0.12, w * 0.045);
+        ctx.fillRect(x - w * 0.34, hY - h * 0.60 - w * 0.018, w * 0.26, w * 0.022);
+      }
       // 炊烟
       if ((si === 3 || nk > 0.3) && Math.random() < dt * 2.2 && this.smoke.length < 14) {
         this.smoke.push({ x: x + w * 0.285, y: hY - h - w * 0.40, life: 0, phase: rand(0, 7), dur: rand(3.5, 5) });
@@ -1731,30 +1801,37 @@
         snow = cl(sp / 0.4);
       }
 
-      // 树干
+      // 被点到时的余晃
+      const shx = Math.sin(t * 26) * 3.5 * this.treeShake;
+      // 树干：根部外扩、向上渐细，微带一点弯
       const wood = `rgb(${80 * dk | 0},${58 * dk | 0},${40 * dk | 0})`;
+      ctx.fillStyle = wood;
+      ctx.beginPath();
+      ctx.moveTo(x - R * 0.20, hY);
+      ctx.quadraticCurveTo(x - R * 0.13, hY - trunkH * 0.10, x - R * 0.105, hY - trunkH * 0.38);
+      ctx.quadraticCurveTo(x - R * 0.085, hY - trunkH * 0.72, x - R * 0.048 + shx * 0.4, topY + R * 0.04);
+      ctx.lineTo(x + R * 0.048 + shx * 0.4, topY + R * 0.04);
+      ctx.quadraticCurveTo(x + R * 0.075, hY - trunkH * 0.68, x + R * 0.10, hY - trunkH * 0.34);
+      ctx.quadraticCurveTo(x + R * 0.135, hY - trunkH * 0.08, x + R * 0.21, hY);
+      ctx.closePath();
+      ctx.fill();
+      // 错落的枝桠：低处的粗、高处的细，带小杈
       ctx.strokeStyle = wood;
       ctx.lineCap = 'round';
-      ctx.lineWidth = R * 0.17;
-      ctx.beginPath();
-      ctx.moveTo(x, hY);
-      ctx.quadraticCurveTo(x - 2, hY - trunkH * 0.55, x, topY + R * 0.18);
-      ctx.stroke();
-      // 错落的枝桠：主枝渐细、带小杈
       const tips = [];
       for (const b of tr.branches) {
         const ay = topY + R * b.h;
-        const ex = x + b.side * R * b.len;
+        const ex = x + b.side * R * b.len + shx;
         const ey = ay - R * b.lift * 0.55;
-        const cxm = x + b.side * R * b.len * 0.35, cym = ay - R * b.lift * 0.12;
-        ctx.lineWidth = R * 0.075;
+        const cxm = x + b.side * R * b.len * 0.35 + shx * 0.5, cym = ay - R * b.lift * 0.12;
+        ctx.lineWidth = R * (0.045 + 0.045 * Math.min(1, b.len));
         ctx.beginPath();
         ctx.moveTo(x, ay);
         ctx.quadraticCurveTo(cxm, cym, ex, ey);
         ctx.stroke();
         // 枝梢更细的一截
         const tx = ex + b.side * R * 0.22, ty = ey - R * 0.16;
-        ctx.lineWidth = R * 0.034;
+        ctx.lineWidth = R * 0.03;
         ctx.beginPath();
         ctx.moveTo(ex, ey);
         ctx.lineTo(tx, ty);
@@ -1764,7 +1841,7 @@
         if (b.twig) {
           const mx = (x + ex) / 2 + b.side * R * 0.06, my = (ay + ey) / 2 - R * 0.04;
           const wx = mx + b.side * R * 0.16, wy = my - R * 0.24;
-          ctx.lineWidth = R * 0.03;
+          ctx.lineWidth = R * 0.026;
           ctx.beginPath();
           ctx.moveTo(mx, my);
           ctx.lineTo(wx, wy);
@@ -1780,7 +1857,7 @@
           const sw = Math.sin(t * 0.5 + c.ph) * 2;
           ctx.fillStyle = `rgba(${lc[0] * dk | 0},${lc[1] * dk | 0},${lc[2] * dk | 0},${0.5 * leaf})`;
           ctx.beginPath();
-          ctx.arc(x + c.dx + sw, cy + c.dy, c.r * (0.55 + 0.45 * leaf), 0, Math.PI * 2);
+          ctx.arc(x + c.dx + sw + shx * 0.9, cy + c.dy, c.r * (0.55 + 0.45 * leaf), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -1789,7 +1866,7 @@
         for (const b of tr.blossoms) {
           ctx.fillStyle = `rgba(255, 228, 238, ${blossom * 0.95 * dk})`;
           ctx.beginPath();
-          ctx.arc(x + b.dx + Math.sin(t * 0.5 + b.dx) * 1.5, cy + b.dy, R * 0.055, 0, Math.PI * 2);
+          ctx.arc(x + b.dx + Math.sin(t * 0.5 + b.dx) * 1.5 + shx * 0.9, cy + b.dy, R * 0.055, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -1800,7 +1877,7 @@
         for (const ap of tr.apples) {
           ctx.fillStyle = `rgba(${ac[0] * dk | 0},${ac[1] * dk | 0},${ac[2] * dk | 0},${apple})`;
           ctx.beginPath();
-          ctx.arc(x + ap.dx, cy + ap.dy, aR, 0, Math.PI * 2);
+          ctx.arc(x + ap.dx + shx * 0.9, cy + ap.dy, aR, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -1813,35 +1890,224 @@
           alpha: 0.85, c: [210, 150, 60],
         });
       }
-      // 冬日积雪：顺着每根枝桠铺一道雪线，枝头结出雪团
-      if (snow > 0.02) {
-        const sc = `rgba(238, 242, 250, ${snow * 0.9})`;
+      // 冬日积雪：厚厚一层压在每根枝桠上，枝头结出雪团（摇树会抖掉，再慢慢积起来）
+      const snowOn = snow * this.treeSnow;
+      if (snowOn > 0.02) {
+        const sc = `rgba(240, 244, 252, ${Math.min(1, snowOn * 1.1)})`;
         ctx.strokeStyle = sc;
         ctx.lineCap = 'round';
         // 树干上的雪
-        ctx.lineWidth = R * 0.06;
+        ctx.lineWidth = R * 0.09;
         ctx.beginPath();
-        ctx.moveTo(x - R * 0.05, hY - trunkH * 0.3);
-        ctx.quadraticCurveTo(x - R * 0.07, hY - trunkH * 0.6, x - R * 0.03, topY + R * 0.2);
+        ctx.moveTo(x - R * 0.07, hY - trunkH * 0.3);
+        ctx.quadraticCurveTo(x - R * 0.09, hY - trunkH * 0.6, x - R * 0.04 + shx * 0.4, topY + R * 0.12);
         ctx.stroke();
         for (const b of tr.branches) {
           const ay = topY + R * b.h;
-          const ex = x + b.side * R * b.len;
+          const ex = x + b.side * R * b.len + shx;
           const ey = ay - R * b.lift * 0.55;
-          const cxm = x + b.side * R * b.len * 0.35, cym = ay - R * b.lift * 0.12;
-          ctx.lineWidth = R * 0.045;
+          const cxm = x + b.side * R * b.len * 0.35 + shx * 0.5, cym = ay - R * b.lift * 0.12;
+          ctx.lineWidth = R * (0.055 + 0.035 * Math.min(1, b.len));
           ctx.beginPath();
-          ctx.moveTo(x, ay - R * 0.045);
-          ctx.quadraticCurveTo(cxm, cym - R * 0.045, ex, ey - R * 0.04);
+          ctx.moveTo(x, ay - R * 0.06);
+          ctx.quadraticCurveTo(cxm, cym - R * 0.06, ex, ey - R * 0.05);
           ctx.stroke();
         }
         ctx.fillStyle = sc;
         for (const [px, py] of tips) {
           ctx.beginPath();
-          ctx.ellipse(px, py - R * 0.03, R * 0.085, R * 0.05, 0, 0, Math.PI * 2);
+          ctx.ellipse(px, py - R * 0.04, R * 0.13, R * 0.075, 0, 0, Math.PI * 2);
           ctx.fill();
         }
       }
+    },
+    /* 雪人：冬日上午由农人堆起，立到来年春雪消融 */
+    snowman(si, sp, snow, nk, t) {
+      const cl = v => Math.max(0, Math.min(1, v));
+      let b = 0, m = 0, h = 0, face = 0, melt = 1;
+      if (si === 3) {
+        b = cl((sp - 0.20) / 0.10);
+        m = cl((sp - 0.30) / 0.08);
+        h = cl((sp - 0.38) / 0.05);
+        face = sp > 0.44 ? 1 : 0;
+      } else if (si === 0 && snow > 0.05) {
+        b = m = h = face = 1;
+        melt = snow;
+      } else return;
+      if (b <= 0.01) return;
+      const hY = this.horizon();
+      const x = W * 0.30;
+      const u = Math.min(W, H) * 0.001 * (0.4 + 0.6 * melt);
+      const a = (1 - 0.35 * nk) * Math.min(1, melt * 1.6);
+      const rb = 26 * u * b, rm = 19 * u * m, rh = 13 * u * h;
+      const yb = hY - rb;
+      const ym = yb - rb * 0.8 - rm * 0.7;
+      const yh = ym - rm * 0.85 - rh * 0.65;
+      ctx.fillStyle = `rgba(246, 249, 254, ${0.95 * a})`;
+      for (const [yy, rr] of [[yb, rb], [ym, rm], [yh, rh]]) {
+        if (rr < 0.5) continue;
+        ctx.beginPath(); ctx.arc(x, yy, rr, 0, Math.PI * 2); ctx.fill();
+      }
+      if (face && rh > 2) {
+        // 面朝田野：煤眼、胡萝卜鼻、树枝手、两颗纽扣
+        ctx.fillStyle = `rgba(42, 44, 52, ${a})`;
+        ctx.beginPath(); ctx.arc(x - rh * 0.52, yh - rh * 0.22, 1.6 * u, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x - rh * 0.10, yh - rh * 0.26, 1.6 * u, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, ym - rm * 0.25, 1.7 * u, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, ym + rm * 0.18, 1.7 * u, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = `rgba(226, 130, 54, ${a})`;
+        ctx.beginPath();
+        ctx.moveTo(x - rh * 0.42, yh + rh * 0.10);
+        ctx.lineTo(x - rh * 0.42 - 9 * u, yh + rh * 0.22);
+        ctx.lineTo(x - rh * 0.36, yh + rh * 0.34);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = `rgba(96, 70, 46, ${a})`;
+        ctx.lineWidth = 1.6 * u;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(x - rm * 0.85, ym - rm * 0.10);
+        ctx.lineTo(x - rm * 1.75, ym - rm * 0.95);
+        ctx.moveTo(x + rm * 0.85, ym - rm * 0.05);
+        ctx.lineTo(x + rm * 1.55, ym - rm * 0.75);
+        ctx.stroke();
+      }
+    },
+    /* 布偶猫的一天：白天在田里溜达、扑蝴蝶，入夜回到屋檐下睡觉 */
+    catStep(dt, t, nk) {
+      const c = this.cat;
+      const spd = Math.min(W, H) * 0.045;
+      const sleepX = W * 0.875 - Math.min(W, H) * 0.137;
+      if (nk > 0.55) {
+        if (c.state !== 'sleep') {
+          if (Math.abs(c.x - sleepX) > 8) { c.state = 'walk'; c.target = sleepX; }
+          else c.state = 'sleep';
+        }
+      } else if (c.state === 'sleep' && nk < 0.45) {
+        c.state = 'sit';
+        c.timer = rand(2, 6);
+      }
+      switch (c.state) {
+        case 'sit':
+          c.timer -= dt;
+          if (c.timer <= 0) {
+            const prey = this.flutters.find(b => Math.abs(b.x - c.x) < W * 0.30);
+            if (prey && Math.random() < 0.6) { c.state = 'chase'; c.timer = 5; }
+            else { c.state = 'walk'; c.target = rand(W * 0.06, W * 0.74); }
+          }
+          break;
+        case 'walk': {
+          const dx = c.target - c.x;
+          c.dir = dx > 0 ? 1 : -1;
+          c.x += c.dir * spd * dt;
+          if (Math.abs(dx) < 6) { c.state = nk > 0.55 ? 'sleep' : 'sit'; c.timer = rand(2.5, 7); }
+          break;
+        }
+        case 'chase': {
+          c.timer -= dt;
+          let prey = null;
+          for (const b of this.flutters) {
+            if (!prey || Math.abs(b.x - c.x) < Math.abs(prey.x - c.x)) prey = b;
+          }
+          if (!prey || c.timer <= 0) { c.state = 'sit'; c.timer = rand(2, 5); break; }
+          c.dir = prey.x > c.x ? 1 : -1;
+          c.x += c.dir * spd * 2.1 * dt;
+          if (Math.abs(prey.x - c.x) < W * 0.02) {
+            c.state = 'pounce';
+            c.jump = 0;
+            prey.vx = c.dir * Math.max(24, Math.abs(prey.vx)) * 2.2; // 蝴蝶受惊飞走
+            prey.dur = Math.min(prey.dur, prey.life + 2.5);
+            prey.scared = true;
+          }
+          break;
+        }
+        case 'pounce':
+          c.jump += dt;
+          c.x += c.dir * spd * 1.6 * dt;
+          if (c.jump > 0.5) { c.state = 'sit'; c.timer = rand(1.5, 4); }
+          break;
+      }
+      c.x = Math.max(W * 0.03, Math.min(W * 0.97, c.x));
+    },
+    /* 布偶猫：奶白的身子，深灰的耳朵、面罩与尾巴 */
+    drawCat(t, nk) {
+      const c = this.cat;
+      const hY = this.horizon();
+      const u = Math.min(W, H) * 0.0006;
+      const a = 0.92 - nk * 0.25;
+      const cream = `rgba(238, 232, 222, ${a})`;
+      const point = `rgba(118, 104, 96, ${a})`;
+      const d = c.dir;
+      const g = hY + 1;
+      if (c.state === 'sleep') {
+        const br = 1 + Math.sin(t * 1.3) * 0.05;          // 睡梦中的呼吸起伏
+        ctx.fillStyle = cream;
+        ctx.beginPath(); ctx.ellipse(c.x, g - 7 * u * br, 14 * u, 7.5 * u * br, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(c.x - 9 * u, g - 8.5 * u, 5.5 * u, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = point;
+        ctx.beginPath();
+        ctx.moveTo(c.x - 13 * u, g - 11.5 * u);
+        ctx.lineTo(c.x - 11.5 * u, g - 16 * u);
+        ctx.lineTo(c.x - 8 * u, g - 13 * u);
+        ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = point;
+        ctx.lineWidth = 3 * u;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(c.x + 12 * u, g - 4 * u);
+        ctx.quadraticCurveTo(c.x + 2 * u, g - 0.5 * u, c.x - 10 * u, g - 3 * u);
+        ctx.stroke();
+        return;
+      }
+      const sitting = c.state === 'sit';
+      const hop = c.state === 'pounce' ? Math.sin(Math.min(1, c.jump / 0.5) * Math.PI) * 16 * u : 0;
+      const stretch = c.state === 'pounce' ? 1.18 : 1;
+      const bodyY = g - 11 * u - hop;
+      ctx.fillStyle = cream;
+      if (sitting) {
+        ctx.beginPath(); ctx.ellipse(c.x, g - 10 * u, 8.5 * u, 11 * u, 0, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.ellipse(c.x, bodyY, 14 * u * stretch, 7 * u / stretch, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = cream;
+        ctx.lineWidth = 2.6 * u;
+        ctx.lineCap = 'round';
+        const off = [9, 5, -5, -9];
+        for (let i = 0; i < 4; i++) {
+          const px = c.x + d * off[i] * u;
+          const sw = c.state === 'pounce' ? (i < 2 ? d * 7 : -d * 3) * u : Math.sin(t * 8 + i * 2.2) * 3.5 * u;
+          ctx.beginPath();
+          ctx.moveTo(px, bodyY + 4 * u);
+          ctx.lineTo(px + sw, g - hop * 0.4);
+          ctx.stroke();
+        }
+      }
+      // 头、耳朵与面罩
+      const hx = c.x + d * (sitting ? 0 : 14) * u;
+      const hy = sitting ? g - 23 * u : bodyY - 6 * u;
+      ctx.fillStyle = cream;
+      ctx.beginPath(); ctx.arc(hx, hy, 6.2 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = point;
+      for (const sgn of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(hx + sgn * 4.5 * u, hy - 3.5 * u);
+        ctx.lineTo(hx + sgn * 5.5 * u, hy - 9 * u);
+        ctx.lineTo(hx + sgn * 1 * u, hy - 5.5 * u);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.beginPath(); ctx.ellipse(hx + d * 3.2 * u, hy + 1.2 * u, 3.2 * u, 2.6 * u, 0, 0, Math.PI * 2); ctx.fill();
+      // 尾巴轻摆
+      ctx.strokeStyle = point;
+      ctx.lineWidth = 3 * u;
+      ctx.lineCap = 'round';
+      const tip = Math.sin(t * 2.2) * 3 * u;
+      ctx.beginPath();
+      if (sitting) {
+        ctx.moveTo(c.x - d * 5 * u, g - 4 * u);
+        ctx.quadraticCurveTo(c.x - d * 14 * u, g - 2 * u, c.x - d * 16 * u + tip, g - 9 * u);
+      } else {
+        ctx.moveTo(c.x - d * 12 * u, bodyY + 2 * u);
+        ctx.quadraticCurveTo(c.x - d * 19 * u, bodyY - 7 * u, c.x - d * 17 * u + tip, bodyY - 14 * u);
+      }
+      ctx.stroke();
     },
     spawnPart(x, y, c, vy0, g, dur, spread = 40) {
       if (this.parts.length > 90) this.parts.shift();
@@ -1922,7 +2188,7 @@
       }
 
       // 田边小屋与苹果树
-      this.hut(nk, si, dt);
+      this.hut(nk, si, dt, st.snow);
       this.tree(si, st.sp, t, nk, dt);
 
       // 季节交替的整理：春来重新抽苗，谷垛只属于秋天
@@ -1989,14 +2255,24 @@
         ctx.fill();
       }
 
-      // 冬天偶有细雪飘下
-      if (si === 3 && Math.random() < dt * 10 && this.parts.length < 90) {
-        this.parts.push({
-          x: rand(0, W), y: -6, vx: rand(-8, 8), vy: rand(14, 26),
-          g: 2, r: rand(1.2, 2.2), phase: rand(0, 7), life: 0, dur: rand(5, 8),
-          alpha: 0.7, c: [240, 245, 252],
-        });
+      // 冬天的雪，时密时疏
+      this.treeShake *= Math.exp(-3 * dt);
+      if (si === 3) {
+        this.treeSnow = Math.min(1, this.treeSnow + dt * 0.05);
+        const inten = Math.max(0, 0.18 + 0.55 * Math.sin(t * 0.085 + this.snowPh) + 0.38 * Math.sin(t * 0.021 + this.snowPh * 2));
+        if (Math.random() < dt * (2 + 26 * inten) && this.parts.length < 110) {
+          this.parts.push({
+            x: rand(0, W), y: -6, vx: rand(-8, 8), vy: rand(14, 30),
+            g: 2, r: rand(1.2, 2.4), phase: rand(0, 7), life: 0, dur: rand(5, 8),
+            alpha: 0.7, c: [240, 245, 252],
+          });
+        }
+      } else {
+        this.treeSnow = 1;
       }
+
+      // 雪人
+      this.snowman(si, st.sp, st.snow, nk, t);
 
       // 农人：日出而作，日落而息。匀速缓行，一季正好走完一趟
       this.farmDir = 1;
@@ -2006,6 +2282,19 @@
           fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'sow';
         } else if (si === 1 && st.sp > 0.04 && st.sp < 0.58) {  // 夏：缓步浇水
           fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'water';
+        } else if (si === 3 && st.sp > 0.10 && st.sp < 0.20) {  // 冬：踏雪出门
+          fx = lerp(W * 0.80, W * 0.335, (st.sp - 0.10) / 0.10);
+          this.farmDir = -1; action = 'walk';
+        } else if (si === 3 && st.sp >= 0.20 && st.sp < 0.44) { // 冬：蹲在雪人边忙活
+          fx = W * 0.335; this.farmDir = -1; action = 'build';
+          if (Math.random() < dt * 4) {
+            this.spawnPart(W * 0.30 + rand(-8, 8), hY - H * rand(0.01, 0.05), [240, 245, 252], -14, 60, rand(0.5, 0.9), 16);
+          }
+        } else if (si === 3 && st.sp >= 0.44 && st.sp < 0.52) { // 冬：站着欣赏一会儿
+          fx = W * 0.345; this.farmDir = -1; action = 'stand';
+        } else if (si === 3 && st.sp >= 0.52 && st.sp < 0.60) { // 冬：心满意足回屋
+          fx = lerp(W * 0.345, W * 0.82, (st.sp - 0.52) / 0.08);
+          this.farmDir = 1; action = 'walk';
         } else if (si === 2 && st.sp > 0.06 && st.sp < 0.60) {  // 秋：挥镰收割（只此一趟，贯穿整个白天）
           const hp = (st.sp - 0.06) / 0.54;
           fx = W * (0.05 + 0.71 * hp);
@@ -2026,7 +2315,7 @@
         }
       }
       if (action) {
-        fx = Math.min(fx, W * 0.74);                  // 田尽头便停下
+        if (si !== 3) fx = Math.min(fx, W * 0.74);    // 农忙时走到田尽头便停下
         this.farmer(fx, t, nk, action);
         if (action === 'sow' && Math.random() < dt * 7) {
           this.spawnPart(fx + H * 0.022, hY - H * 0.04, [188, 158, 96], -16, 90, rand(0.8, 1.2));
@@ -2035,6 +2324,10 @@
           this.spawnPart(fx + H * 0.028, hY - H * 0.03, [150, 198, 235], 4, 200, rand(0.5, 0.8), 18);
         }
       }
+
+      // 布偶猫
+      this.catStep(dt, t, nk);
+      this.drawCat(t, nk);
 
       // 飘浮的颗粒（花瓣 / 谷粒 / 水滴 / 雪）
       for (let i = this.parts.length - 1; i >= 0; i--) {
@@ -2051,6 +2344,16 @@
         ctx.fill();
       }
 
+      // 春夏的白天，偶尔有蝴蝶自己飞进田里（自动最多 6 只，点击最多加到 9 只）
+      if (nk < 0.45 && (si === 1 || (si === 0 && st.sp > 0.30))
+          && this.flutters.length < 6 && Math.random() < dt * 0.18) {
+        const fromLeft = Math.random() < 0.5;
+        this.spawnButterfly(
+          fromLeft ? -20 : W + 20,
+          hY - rand(H * 0.04, H * 0.18),
+          (fromLeft ? 1 : -1) * rand(18, 34)
+        );
+      }
       // 蝴蝶
       for (let i = this.flutters.length - 1; i >= 0; i--) {
         const b = this.flutters[i];
@@ -2058,14 +2361,34 @@
         if (b.life >= b.dur || b.x < -40 || b.x > W + 40) { this.flutters.splice(i, 1); continue; }
         b.x += b.vx * dt;
         b.y += Math.sin(b.life * 2.5 + b.phase) * 22 * dt;
-        const wing = Math.abs(Math.sin(b.life * 12)) * 5 + 1.5;
-        const a = Math.min(1, b.dur - b.life) * 0.85;
-        ctx.fillStyle = `rgba(${b.c[0]},${b.c[1]},${b.c[2]},${a})`;
-        for (const s of [-1, 1]) {
+        if (b.scared) b.y -= 30 * dt;                  // 被猫扑过，边飞边升高
+        const wing = (Math.abs(Math.sin(b.life * 11)) * 4.5 + 1.5) * (b.size || 1);
+        const a = Math.min(1, b.dur - b.life, 0.3 + b.life) * 0.9 * (1 - nk * 0.5);
+        for (const sgn of [-1, 1]) {
+          // 后翅（主色）
+          ctx.fillStyle = `rgba(${b.c[0]},${b.c[1]},${b.c[2]},${a})`;
           ctx.beginPath();
-          ctx.ellipse(b.x + s * wing * 0.7, b.y, wing, wing * 1.5, s * 0.5, 0, Math.PI * 2);
+          ctx.ellipse(b.x + sgn * wing * 0.7, b.y + wing * 0.2, wing, wing * 1.3, sgn * 0.5, 0, Math.PI * 2);
           ctx.fill();
+          // 前翅（花蝴蝶的第二种颜色）与翅尖小白点
+          if (b.c2) {
+            ctx.fillStyle = `rgba(${b.c2[0]},${b.c2[1]},${b.c2[2]},${a})`;
+            ctx.beginPath();
+            ctx.ellipse(b.x + sgn * wing * 0.8, b.y - wing * 0.75, wing * 0.72, wing * 0.95, sgn * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = `rgba(255,255,255,${a * 0.55})`;
+            ctx.beginPath();
+            ctx.arc(b.x + sgn * wing * 1.1, b.y - wing * 0.95, wing * 0.18, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
+        // 身体
+        ctx.strokeStyle = `rgba(70, 58, 48, ${a})`;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(b.x, b.y - wing * 0.7);
+        ctx.lineTo(b.x, b.y + wing * 0.7);
+        ctx.stroke();
       }
 
       // 角落里淡淡的季节字
@@ -2078,6 +2401,13 @@
       const yp = (((performance.now() / 1000 - this.t0) / this.YEAR) % 1 + 1) % 1;
       const st = farmState(yp);
       const hY = this.horizon();
+      // 冬天点苹果树：枝桠一抖，落下一蓬雪
+      const tr0 = this.tree0;
+      if (st.si === 3 && st.snow > 0.15 && Math.abs(x - tr0.x) < tr0.R * 1.5
+          && y > hY - tr0.R * 3.4 && y < hY + 10) {
+        this.shakeTree();
+        return;
+      }
       // 秋天：点到成熟的作物，亲手收割
       if (st.si === 2 && st.gold > 0.5) {
         let cutAny = false;
@@ -2096,13 +2426,10 @@
         this.crops.push(this.seed(x, 0.02));
         if (this.crops.length > 170) this.crops.shift();
       }
-      // 应季的小动静：春撒花瓣、夏来蝴蝶、冬扬雪沫
+      // 应季的小动静：春夏添一只蝴蝶、冬扬雪沫
       let col = [255, 235, 245], n = 6;
-      if (st.si === 1) {
-        this.flutters.push({
-          x, y: Math.min(y, hY - 24), vx: (x < W / 2 ? 1 : -1) * rand(24, 40),
-          phase: rand(0, 7), life: 0, dur: rand(5, 9), c: [255, 220, 120],
-        });
+      if (st.si === 1 || (st.si === 0 && st.sp > 0.30)) {
+        this.spawnButterfly(x, Math.min(y, hY - 24), (x < W / 2 ? 1 : -1) * rand(24, 40));
         col = [255, 240, 180]; n = 4;
       } else if (st.si === 3) { col = [240, 245, 252]; n = 7; }
       for (let i = 0; i < n; i++) {
