@@ -2016,17 +2016,17 @@
       const cl = v => Math.max(0, Math.min(1, v));
       let b = 0, m = 0, h = 0, face = 0, melt = 1;
       if (si === 3) {
-        b = cl((sp - 0.20) / 0.10);
-        m = cl((sp - 0.30) / 0.08);
-        h = cl((sp - 0.38) / 0.05);
-        face = sp > 0.44 ? 1 : 0;
+        b = cl((sp - 0.26) / 0.08);
+        m = cl((sp - 0.35) / 0.07);
+        h = cl((sp - 0.42) / 0.04);
+        face = sp > 0.465 ? 1 : 0;
       } else if (si === 0 && snow > 0.05) {
         b = m = h = face = 1;
         melt = snow;
       } else return;
       if (b <= 0.01) return;
       const hY = this.horizon();
-      const x = W * 0.30;
+      const x = W * 0.50;
       const u = Math.min(W, H) * 0.001 * (0.4 + 0.6 * melt);
       const a = (1 - 0.35 * nk) * Math.min(1, melt * 1.6);
       const rb = 26 * u * b, rm = 19 * u * m, rh = 13 * u * h;
@@ -2373,18 +2373,18 @@
           fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'sow';
         } else if (si === 1 && st.sp > 0.04 && st.sp < 0.58) {  // 夏：缓步浇水
           fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'water';
-        } else if (si === 3 && st.sp > 0.10 && st.sp < 0.20) {  // 冬：踏雪出门
-          fx = lerp(W * 0.80, W * 0.335, (st.sp - 0.10) / 0.10);
+        } else if (si === 3 && st.sp > 0.06 && st.sp < 0.26) {  // 冬：慢慢踏雪出门
+          fx = lerp(W * 0.80, W * 0.535, (st.sp - 0.06) / 0.20);
           this.farmDir = -1; action = 'walk';
-        } else if (si === 3 && st.sp >= 0.20 && st.sp < 0.44) { // 冬：蹲在雪人边忙活
-          fx = W * 0.335; this.farmDir = -1; action = 'build';
+        } else if (si === 3 && st.sp >= 0.26 && st.sp < 0.46) { // 冬：蹲在雪人边忙活
+          fx = W * 0.535; this.farmDir = -1; action = 'build';
           if (Math.random() < dt * 4) {
-            this.spawnPart(W * 0.30 + rand(-8, 8), hY - H * rand(0.01, 0.05), [240, 245, 252], -14, 60, rand(0.5, 0.9), 16);
+            this.spawnPart(W * 0.50 + rand(-8, 8), hY - H * rand(0.01, 0.05), [240, 245, 252], -14, 60, rand(0.5, 0.9), 16);
           }
-        } else if (si === 3 && st.sp >= 0.44 && st.sp < 0.52) { // 冬：站着欣赏一会儿
-          fx = W * 0.345; this.farmDir = -1; action = 'stand';
-        } else if (si === 3 && st.sp >= 0.52 && st.sp < 0.60) { // 冬：心满意足回屋
-          fx = lerp(W * 0.345, W * 0.82, (st.sp - 0.52) / 0.08);
+        } else if (si === 3 && st.sp >= 0.46 && st.sp < 0.50) { // 冬：站着欣赏一会儿
+          fx = W * 0.545; this.farmDir = -1; action = 'stand';
+        } else if (si === 3 && st.sp >= 0.50 && st.sp < 0.66) { // 冬：趁着暮色慢慢回屋
+          fx = lerp(W * 0.545, W * 0.82, (st.sp - 0.50) / 0.16);
           this.farmDir = 1; action = 'walk';
         } else if (si === 2 && st.sp > 0.06 && st.sp < 0.60) {  // 秋：挥镰收割（只此一趟，贯穿整个白天）
           const hp = (st.sp - 0.06) / 0.54;
