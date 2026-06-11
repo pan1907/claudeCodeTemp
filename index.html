@@ -387,7 +387,7 @@
       const src = this.noise();
       const f = c.createBiquadFilter();
       f.type = 'bandpass';
-      f.frequency.value = rand(2500, 5200);
+      f.frequency.value = rand(3600, 6600);
       f.Q.value = 8;
       const g = c.createGain();
       g.gain.value = 0;
@@ -418,38 +418,46 @@
       const src = this.noise();
       const f = c.createBiquadFilter();
       f.type = 'bandpass';
-      f.frequency.value = rand(1800, 6500);
-      f.Q.value = rand(1.5, 4);
+      f.frequency.value = rand(3000, 8200);  // 提高频率：更清亮、不闷
+      f.Q.value = rand(0.8, 2.2);            // 降低 Q：更airy的噪声，少"有音高的低 tick"
       const g = c.createGain();
       g.gain.value = 0;
       src.connect(f); f.connect(g); g.connect(out);
-      const v = rand(0.006, 0.022);
+      const v = rand(0.006, 0.02);
       g.gain.setValueAtTime(0, t0);
       g.gain.linearRampToValueAtTime(v, t0 + 0.004);
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + rand(0.04, 0.09));
       src.stop(t0 + 0.12);
     },
-    /* 一声蛙鸣：低频锯齿加快速颤动（rrr），尾音微微下沉 */
+    /* 一声蛙鸣：2~3 声短促的"呱"，每声快起快落、带"啊"的共振峰与颗粒颤动 */
     croak(out) {
       const c = this.ctx, t0 = c.currentTime;
-      const o = c.createOscillator();
-      o.type = 'sawtooth';
-      o.frequency.setValueAtTime(205, t0);
-      o.frequency.linearRampToValueAtTime(150, t0 + 0.5);
-      const f = c.createBiquadFilter();
-      f.type = 'lowpass'; f.frequency.value = 900;
-      const g = c.createGain(); g.gain.value = 0;
-      o.connect(f); f.connect(g); g.connect(out);
-      const lfo = c.createOscillator();
-      lfo.type = 'square'; lfo.frequency.value = 33;
-      const lg = c.createGain(); lg.gain.value = 0.5;
-      lfo.connect(lg); lg.connect(g.gain);
-      o.start(t0); lfo.start(t0);
-      g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.09, t0 + 0.05);
-      g.gain.setValueAtTime(0.09, t0 + 0.34);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.55);
-      o.stop(t0 + 0.6); lfo.stop(t0 + 0.6);
+      const n = 2 + (Math.random() < 0.4 ? 1 : 0);
+      const base = rand(250, 305);
+      for (let i = 0; i < n; i++) {
+        const ts = t0 + i * rand(0.15, 0.21);
+        const o = c.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(base * 1.18, ts);
+        o.frequency.exponentialRampToValueAtTime(base * 0.82, ts + 0.12);
+        // "啊"的共振峰，让它像"呱"而不是嗡鸣
+        const bp = c.createBiquadFilter();
+        bp.type = 'bandpass'; bp.frequency.value = rand(760, 900); bp.Q.value = 3.5;
+        const lp = c.createBiquadFilter();
+        lp.type = 'lowpass'; lp.frequency.value = 2100;
+        const g = c.createGain(); g.gain.value = 0;
+        o.connect(bp); bp.connect(lp); lp.connect(g); g.connect(out);
+        // 快速方波颤动，给"呱"的颗粒感
+        const lfo = c.createOscillator();
+        lfo.type = 'square'; lfo.frequency.value = rand(50, 62);
+        const lg = c.createGain(); lg.gain.value = 0.42;
+        lfo.connect(lg); lg.connect(g.gain);
+        o.start(ts); lfo.start(ts);
+        g.gain.setValueAtTime(0, ts);
+        g.gain.linearRampToValueAtTime(0.11, ts + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ts + 0.15);
+        o.stop(ts + 0.2); lfo.stop(ts + 0.2);
+      }
     },
     /* 一声轻钟：基音加一个八度泛音，缓缓衰减 */
     chime(out) {
@@ -1685,11 +1693,11 @@
     /* 下雨：以成片细碎的雨点为主体，加一层很轻的高频沙沙；强度时大时小 */
     sound(A, out) {
       const c = A.ctx;
-      // 雨幕的高频沙沙底（带通偏高，避免低频造成"浪涌"感），保持很轻
+      // 雨幕的高频沙沙底（更高的 highpass，去掉低频闷感、保持清亮），很轻
       const hiss = A.noise();
       const hf = c.createBiquadFilter();
-      hf.type = 'highpass'; hf.frequency.value = 2200;
-      const hg = c.createGain(); hg.gain.value = 0.05;
+      hf.type = 'highpass'; hf.frequency.value = 3200;
+      const hg = c.createGain(); hg.gain.value = 0.045;
       hiss.connect(hf); hf.connect(hg); hg.connect(out);
       const ph1 = rand(0, 7), ph2 = rand(0, 7);
       let nextDrop = rand(1.5, 3), acc = 0;
@@ -1697,11 +1705,11 @@
         update(t, dt) {
           const inten = Math.max(0, Math.min(1,
             0.5 + 0.4 * Math.sin(t * 0.07 + ph1) + 0.22 * Math.sin(t * 0.019 + ph2)));
-          hg.gain.setTargetAtTime(0.03 + 0.05 * inten, c.currentTime, 0.5);
-          // 雨声主体：大量随机的细碎雨点（雨越大，落得越密）
-          acc += (dt || 0.016) * (24 + 40 * inten);
+          hg.gain.setTargetAtTime(0.02 + 0.05 * inten, c.currentTime, 0.5);
+          // 雨声主体：大量随机的细碎雨点（稀疏 ↔ 密集 的对比拉得更明显）
+          acc += (dt || 0.016) * (8 + 64 * inten);
           let guard = 0;
-          while (acc >= 1 && guard++ < 9) { acc -= 1; A.raintick(out); }
+          while (acc >= 1 && guard++ < 10) { acc -= 1; A.raintick(out); }
           // 偶尔一滴近处清脆的水声
           if (t >= nextDrop) { nextDrop = t + rand(1.5, 3); A.droplet(out); }
         },
