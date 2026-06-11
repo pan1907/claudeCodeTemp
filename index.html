@@ -2062,17 +2062,21 @@
         ctx.stroke();
       }
     },
-    /* 布偶猫的一天：白天在田里溜达、扑蝴蝶，入夜回到屋檐下睡觉 */
+    /* 布偶猫的一天：白天在田里溜达、扑蝴蝶；入夜回家——冬天进屋睡，别的季节睡屋檐下 */
     catStep(dt, t, nk) {
       const c = this.cat;
       const spd = Math.min(W, H) * 0.045;
-      const sleepX = W * 0.875 - Math.min(W, H) * 0.137;
-      if (nk > 0.55) {
-        if (c.state !== 'sleep') {
-          if (Math.abs(c.x - sleepX) > 8) { c.state = 'walk'; c.target = sleepX; }
-          else c.state = 'sleep';
+      const winter = this.lastSi === 3;
+      const eaveX = W * 0.875 - Math.min(W, H) * 0.137;     // 屋檐下
+      const doorX = W * 0.875 + Math.min(W, H) * 0.13 * 0.20; // 屋门口
+      const homeX = winter ? doorX : eaveX;
+      const nightState = winter ? 'inside' : 'sleep';
+      if (nk > 0.5) {
+        if (c.state !== 'sleep' && c.state !== 'inside') {
+          if (Math.abs(c.x - homeX) > 8) { c.state = 'walk'; c.target = homeX; }
+          else c.state = nightState;
         }
-      } else if (c.state === 'sleep' && nk < 0.45) {
+      } else if ((c.state === 'sleep' || c.state === 'inside') && nk < 0.45) {
         c.state = 'sit';
         c.timer = rand(2, 6);
       }
@@ -2088,8 +2092,9 @@
         case 'walk': {
           const dx = c.target - c.x;
           c.dir = dx > 0 ? 1 : -1;
-          c.x += c.dir * spd * dt;
-          if (Math.abs(dx) < 6) { c.state = nk > 0.55 ? 'sleep' : 'sit'; c.timer = rand(2.5, 7); }
+          const ws = nk > 0.5 ? spd * 1.9 : spd;   // 入夜赶着回家，脚步快些
+          c.x += c.dir * ws * dt;
+          if (Math.abs(dx) < 6) { c.state = nk > 0.5 ? nightState : 'sit'; c.timer = rand(2.5, 7); }
           break;
         }
         case 'chase': {
@@ -2128,6 +2133,7 @@
       const point = `rgba(118, 104, 96, ${a})`;
       const d = c.dir;
       const g = hY + 1;
+      if (c.state === 'inside') return;   // 冬夜进了屋，不再画出来
       if (c.state === 'sleep') {
         const br = 1 + Math.sin(t * 1.3) * 0.05;          // 睡梦中的呼吸起伏
         ctx.fillStyle = cream;
