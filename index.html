@@ -335,48 +335,61 @@
       return s;
     },
     /* 一声蟋蟀：高频正弦的几个短脉冲 */
-    cricket(out) {
+    cricket(out, depth = 0) {
       // 真实蟋蟀：~4.7kHz 的近纯音载波，结组成 chirp——3~4 个软起软落的脉冲、音节率约 30Hz；
-      // 加一点二次谐波，避免过于纯净的电子感
+      // depth 0=近（响而亮、居中），1=远（轻而闷、偏声道），用来叠出远近成群的虫鸣
       const c = this.ctx, t0 = c.currentTime;
       const f0 = rand(4400, 5000);
       const o1 = c.createOscillator(); o1.type = 'sine'; o1.frequency.value = f0;
       const o2 = c.createOscillator(); o2.type = 'sine'; o2.frequency.value = f0 * 2;
-      const o2g = c.createGain(); o2g.gain.value = 0.13;
+      const o2g = c.createGain(); o2g.gain.value = 0.13 * (1 - 0.6 * depth);
       const g = c.createGain(); g.gain.value = 0;
-      let tail = out;
+      // 远处的更闷
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = lerp(9000, 3200, depth);
+      let tail = lp;
       if (c.createStereoPanner) {
         const pan = c.createStereoPanner();
-        pan.pan.value = rand(-0.7, 0.7);
-        pan.connect(out);
-        tail = pan;
-      }
+        pan.pan.value = depth * rand(-0.9, 0.9);   // 越远越偏
+        lp.connect(pan); pan.connect(out);
+      } else { lp.connect(out); }
       o1.connect(g); o2.connect(o2g); o2g.connect(g); g.connect(tail);
+      const peak = lerp(0.05, 0.016, depth);        // 越远越轻
       const pulses = 3 + Math.floor(Math.random() * 2);  // 3~4 个脉冲为一声
       const period = rand(0.028, 0.034);                 // ~30Hz 音节率
       for (let i = 0; i < pulses; i++) {
         const tp = t0 + i * period;
         g.gain.setValueAtTime(0.0001, tp);
-        g.gain.linearRampToValueAtTime(0.05, tp + 0.004);              // 软起
+        g.gain.linearRampToValueAtTime(peak, tp + 0.004);              // 软起
         g.gain.exponentialRampToValueAtTime(0.0001, tp + period * 0.7); // 软落
       }
       const end = t0 + pulses * period + 0.06;
       o1.start(t0); o2.start(t0); o1.stop(end); o2.stop(end);
     },
-    /* 一声鸟鸣：两三个快速滑动的短音节 */
-    bird(out) {
+    /* 一声鸟鸣：两三个快速滑动的短音节。
+       depth 0=近（响而亮、居中），1=远（轻而闷、偏声道），用来叠出远近成群的鸟鸣 */
+    bird(out, depth = 0) {
       const c = this.ctx, t0 = c.currentTime;
-      const base = rand(1900, 2600);
+      const base = rand(1900, 2600) * lerp(1, 0.85, depth);
+      const lp = c.createBiquadFilter();
+      lp.type = 'lowpass'; lp.frequency.value = lerp(7000, 2600, depth);
+      let tail = lp;
+      if (c.createStereoPanner) {
+        const pan = c.createStereoPanner();
+        pan.pan.value = depth * rand(-0.9, 0.9);
+        lp.connect(pan); pan.connect(out);
+      } else { lp.connect(out); }
+      const peak = lerp(0.018, 0.006, depth);
       const syl = (ts, f0, f1) => {
         const o = c.createOscillator();
         o.type = 'sine';
         const g = c.createGain();
         g.gain.value = 0;
-        o.connect(g); g.connect(out);
+        o.connect(g); g.connect(tail);
         o.frequency.setValueAtTime(f0, t0 + ts);
         o.frequency.linearRampToValueAtTime(f1, t0 + ts + 0.07);
         g.gain.setValueAtTime(0, t0 + ts);
-        g.gain.linearRampToValueAtTime(0.018, t0 + ts + 0.015);
+        g.gain.linearRampToValueAtTime(peak, t0 + ts + 0.015);
         g.gain.linearRampToValueAtTime(0, t0 + ts + 0.09);
         o.start(t0 + ts);
         o.stop(t0 + ts + 0.12);
@@ -703,14 +716,20 @@
       }
     },
     /* 夏夜：轻微的夜风 + 蟋蟀 */
-    /* 夏夜：不铺底音，只有偶尔一声蟋蟀 */
+    /* 夏夜：不铺底音。远处一片若有若无的虫鸣 + 偶尔近处清晰一声，叠出层次 */
     sound(A, out) {
-      let next = rand(2, 4);
+      let near = rand(3, 6), far = rand(0.8, 1.8);
       return {
         update(t) {
-          if (t < next) return;
-          next = t + rand(3, 5);
-          A.cricket(out);
+          if (t >= far) {                       // 远处的虫鸣较密但很轻
+            far = t + rand(0.7, 1.8);
+            A.cricket(out, rand(0.55, 1));
+            if (Math.random() < 0.3) A.cricket(out, rand(0.6, 1));
+          }
+          if (t >= near) {                      // 近处偶尔清晰的一声
+            near = t + rand(4, 8);
+            A.cricket(out, rand(0, 0.3));
+          }
         },
       };
     },
@@ -1966,16 +1985,17 @@
         }
       }
     },
-    /* 昼夜：旷野的风；有鸟群飞过时才有鸟鸣 */
+    /* 昼夜：旷野的风；有鸟群飞过时才有鸟鸣（远处几只 + 近处偶尔一声，成群感） */
     sound(A, out) {
       const nodes = A.wind(out, { vol: 0.07, cutoff: 240 });
       const self = this;
-      let next = 0;
+      let near = 0, far = 0;
       return {
         update(t) {
-          if (nightAmt(self.lastD) > 0.45 || self.birds.length === 0 || t < next) return;
-          next = t + rand(3, 5);
-          A.bird(out);
+          const active = nightAmt(self.lastD) <= 0.45 && self.birds.length > 0;
+          if (!active) return;
+          if (t >= far) { far = t + rand(1.2, 3); A.bird(out, rand(0.55, 1)); }
+          if (t >= near) { near = t + rand(3, 5); A.bird(out, rand(0, 0.35)); }
         },
         dispose() { stopAll(nodes); },
       };
@@ -2992,16 +3012,17 @@
         this.spawnPart(x + rand(-8, 8), (st.si === 3 ? y : hY) + rand(-6, 6), col, -22, 26, rand(1.4, 2.4));
       }
     },
-    /* 种地：田野的轻风；春夏秋的白天有鸟鸣，冬天与夜里只有风 */
+    /* 种地：田野的轻风；春夏秋的白天有鸟鸣（远处几只 + 近处偶尔一声），冬天与夜里只有风 */
     sound(A, out) {
       const nodes = A.wind(out, { vol: 0.07, cutoff: 300 });
       const self = this;
-      let next = rand(3, 5);
+      let near = rand(3, 5), far = rand(1.5, 3);
       return {
         update(t) {
-          if (t < next) return;
-          next = t + rand(3, 5);
-          if (self.lastSi !== 3 && self.lastNk < 0.5) A.bird(out);
+          const active = self.lastSi !== 3 && self.lastNk < 0.5;
+          if (!active) return;
+          if (t >= far) { far = t + rand(1.5, 3.5); A.bird(out, rand(0.6, 1)); }
+          if (t >= near) { near = t + rand(3, 5); A.bird(out, rand(0, 0.4)); }
         },
         dispose() { stopAll(nodes); },
       };
