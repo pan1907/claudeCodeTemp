@@ -1286,7 +1286,7 @@
         r: rand(22, 46), phase: rand(0, 7), tone: rand(0, 1),
       }));
       this.lily = { x: W * 0.36, y: wy + (H - wy) * 0.52 };
-      this.frog = null;        // 青蛙状态机
+      this.frogs = [];         // 青蛙们（每片睡莲叶上最多一只）
       this.sdrops = [];        // 跳水溅起的水珠
       // 框住画面的枝叶（左上、右上、右下垂枝）+ 每根枝上的叶子
       const branchDefs = [
@@ -1420,6 +1420,59 @@
       }
       ctx.restore();
     },
+    // 蹲在睡莲上的青蛙：正面朝屏幕，圆鼓的浅色肚子随蛙鸣鼓动
+    drawFrogFront(x, y, s, inflate, t) {
+      const breath = 0.5 + 0.5 * Math.sin(t * 2.4);
+      const puff = 1 + inflate * 0.55 + breath * 0.05;   // 肚子鼓动
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(s, s);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // 后腿：在身体两侧张开、膝盖外耸
+      ctx.strokeStyle = '#3f5c2c'; ctx.lineWidth = 4.2;
+      for (const sx of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(sx * 4, -7); ctx.lineTo(sx * 15, -10); ctx.lineTo(sx * 13, -0.5);
+        ctx.stroke();
+        ctx.fillStyle = '#4a6a34';
+        ctx.beginPath(); ctx.ellipse(sx * 14, 0.5, 5, 2.6, sx * 0.2, 0, Math.PI * 2); ctx.fill();
+      }
+      // 身躯（下宽上圆的绿背与头）
+      const bodyGrad = ctx.createLinearGradient(0, -26, 0, 2);
+      bodyGrad.addColorStop(0, '#749b4c'); bodyGrad.addColorStop(1, '#557a36');
+      ctx.fillStyle = bodyGrad;
+      ctx.beginPath();
+      ctx.moveTo(-12, -2);
+      ctx.quadraticCurveTo(-14, -16, -8, -22);
+      ctx.quadraticCurveTo(0, -27, 8, -22);
+      ctx.quadraticCurveTo(14, -16, 12, -2);
+      ctx.quadraticCurveTo(0, 3, -12, -2);
+      ctx.closePath(); ctx.fill();
+      // 圆鼓的浅色肚子（鼓动的部位）
+      ctx.save();
+      ctx.translate(0, -6); ctx.scale(puff, puff);
+      const belly = ctx.createRadialGradient(0, 1.5, 1, 0, 0, 10);
+      belly.addColorStop(0, '#e9eeb2'); belly.addColorStop(1, '#bccf7c');
+      ctx.fillStyle = belly;
+      ctx.beginPath(); ctx.ellipse(0, 0, 8.6, 8.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      // 前足：肚子前的两只小手
+      ctx.fillStyle = '#4a6a34';
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.ellipse(sx * 5, 1.8, 3, 2, sx * 0.3, 0, Math.PI * 2); ctx.fill(); }
+      // 头顶两只鼓眼
+      for (const sx of [-1, 1]) {
+        ctx.fillStyle = '#749b4c';
+        ctx.beginPath(); ctx.arc(sx * 6.5, -23, 4.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#eccb3e';
+        ctx.beginPath(); ctx.arc(sx * 6.5, -23.5, 2.7, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1b2410';
+        ctx.beginPath(); ctx.arc(sx * 6.5, -23.5, 1.3, 0, Math.PI * 2); ctx.fill();
+      }
+      // 嘴角微微一弯
+      ctx.strokeStyle = 'rgba(40,58,26,0.6)'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(-6, -15.5); ctx.quadraticCurveTo(0, -12.5, 6, -15.5); ctx.stroke();
+      ctx.restore();
+    },
     waterPoint() {
       const wy = this.waterY();
       return {
@@ -1427,48 +1480,50 @@
         y: rand(wy + 46, H - 26),
       };
     },
+    // 屏幕上所有可以落脚的睡莲叶（含开花那片）
+    perches() {
+      const list = this.pads.map((p, i) => ({ x: p.x, y: p.y - 3, key: 'p' + i }));
+      list.push({ x: this.lily.x, y: this.lily.y - 4, key: 'lily' });
+      return list;
+    },
     stepFrog(dt, t) {
-      const f = this.frog;
-      if (!f) return;
-      f.t += dt;
-      const arc = (p) => {
-        f.x = lerp(f.sx, f.tx, p);
-        f.y = lerp(f.sy, f.ty, p) - f.jumpH * Math.sin(p * Math.PI);
-      };
-      if (f.state === 'jumpIn' || f.state === 'jumpOut') {
-        const p = Math.min(1, f.t / f.dur);
-        arc(p);
-        // 朝运动方向略微仰俯
-        const vy = (f.ty - f.sy) / f.dur - f.jumpH * Math.PI / f.dur * Math.cos(p * Math.PI);
-        f.tilt = Math.max(-0.5, Math.min(0.5, vy / 900)) * f.dir * -1;
-        f.leap = Math.sin(p * Math.PI);
-        if (p >= 1) {
-          if (f.state === 'jumpIn') {
-            f.state = 'sit'; f.t = 0; f.tilt = 0; f.leap = 0;
-            f.sitDur = rand(16, 28); f.nextCroak = rand(2, 5);
-            this.ripples.push({ x: f.x, y: f.y + 4, life: 0, dur: 1.0, max: 14, str: 0.18 }); // 落上叶垫的轻涟漪
-          } else {
-            this.frogSplash(f.tx, f.ty, 1.0);  // 入水
-            this.frog = null;
-            return;
+      for (let i = this.frogs.length - 1; i >= 0; i--) {
+        const f = this.frogs[i];
+        f.t += dt;
+        if (f.state === 'jumpIn' || f.state === 'jumpOut') {
+          const p = Math.min(1, f.t / f.dur);
+          f.x = lerp(f.sx, f.tx, p);
+          f.y = lerp(f.sy, f.ty, p) - f.jumpH * Math.sin(p * Math.PI);
+          const vy = (f.ty - f.sy) / f.dur - f.jumpH * Math.PI / f.dur * Math.cos(p * Math.PI);
+          f.tilt = Math.max(-0.5, Math.min(0.5, vy / 900)) * f.dir * -1;
+          f.leap = Math.sin(p * Math.PI);
+          if (p >= 1) {
+            if (f.state === 'jumpIn') {
+              f.state = 'sit'; f.t = 0; f.tilt = 0; f.leap = 0;
+              f.sitDur = rand(16, 28); f.nextCroak = rand(2, 5);
+              this.ripples.push({ x: f.x, y: f.y + 4, life: 0, dur: 1.0, max: 14, str: 0.18 });
+            } else {
+              this.frogSplash(f.tx, f.ty, 1.0);  // 入水
+              this.frogs.splice(i, 1);
+            }
           }
-        }
-      } else if (f.state === 'sit') {
-        f.leap = 0; f.tilt = 0;
-        f.inflate = Math.max(0, f.inflate - dt * 2.5);
-        f.nextCroak -= dt;
-        if (f.nextCroak <= 0) {
-          f.nextCroak = rand(9, 13);          // 约十秒叫一声
-          f.inflate = 1; sfx('croak');
-        }
-        f.sitDur -= dt;
-        if (f.sitDur <= 0) {                  // 时候到了，跳回水里
-          const wp = this.waterPoint();
-          f.state = 'jumpOut'; f.t = 0;
-          f.sx = f.x; f.sy = f.y; f.tx = wp.x; f.ty = wp.y;
-          f.dir = wp.x >= f.x ? 1 : -1;
-          f.jumpH = 80 + Math.abs(wp.x - f.x) * 0.25;
-          f.dur = rand(0.75, 0.95);
+        } else if (f.state === 'sit') {
+          f.leap = 0; f.tilt = 0;
+          f.inflate = Math.max(0, f.inflate - dt * 2.5);
+          f.nextCroak -= dt;
+          if (f.nextCroak <= 0) {
+            f.nextCroak = rand(9, 13);          // 约十秒叫一声
+            f.inflate = 1; sfx('croak');
+          }
+          f.sitDur -= dt;
+          if (f.sitDur <= 0) {                  // 时候到了，跳回水里
+            const wp = this.waterPoint();
+            f.state = 'jumpOut'; f.t = 0;
+            f.sx = f.x; f.sy = f.y; f.tx = wp.x; f.ty = wp.y;
+            f.dir = wp.x >= f.x ? 1 : -1;
+            f.jumpH = 80 + Math.abs(wp.x - f.x) * 0.25;
+            f.dur = rand(0.75, 0.95);
+          }
         }
       }
     },
@@ -1558,11 +1613,11 @@
         ctx.fillStyle = `rgba(228,244,238,${Math.pow(1 - s.life / s.dur, 0.6) * 0.7})`;
         ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
       }
-      // 青蛙
+      // 青蛙们：蹲坐时正面朝屏幕，跳跃时侧面（后落脚的画在前面）
       this.stepFrog(dt, t);
-      if (this.frog) {
-        const f = this.frog;
-        this.drawFrog(f.x, f.y, 1.15, f.dir, f.leap || 0, f.tilt || 0, f.inflate || 0, t);
+      for (const f of this.frogs) {
+        if (f.state === 'sit') this.drawFrogFront(f.x, f.y + 2, 1.2, f.inflate || 0, t);
+        else this.drawFrog(f.x, f.y, 1.15, f.dir, f.leap || 0, f.tilt || 0, 0, t);
       }
 
       // 雨丝：落到水面溅起涟漪
@@ -1595,21 +1650,28 @@
     },
     tap(x, y) {
       const wy = this.waterY();
-      // 点到睡莲附近：唤来一只青蛙跳上去（已有青蛙则提前请它跳回水里）
-      if (Math.hypot(x - this.lily.x, y - this.lily.y) < 56) {
-        if (!this.frog) {
-          const wp = this.waterPoint();
-          this.frog = {
-            state: 'jumpIn', t: 0, dur: rand(0.8, 1.0),
-            sx: wp.x, sy: wp.y, tx: this.lily.x, ty: this.lily.y - 3,
-            dir: this.lily.x >= wp.x ? 1 : -1,
-            jumpH: 90 + Math.abs(this.lily.x - wp.x) * 0.25,
-            leap: 0, tilt: 0, inflate: 0,
-          };
-          this.frogSplash(wp.x, wp.y, 1.0); // 出水的水花
+      // 点到任意一片睡莲叶：唤来一只青蛙跳上去（该叶已有青蛙则提前请它跳回水里）
+      let best = null, bd = 1e9;
+      for (const pe of this.perches()) {
+        const d = Math.hypot(x - pe.x, (y - pe.y) * 1.7); // 叶垫是扁的，纵向更敏感
+        if (d < bd) { bd = d; best = pe; }
+      }
+      if (best && bd < 52) {
+        const here = this.frogs.find(f => f.key === best.key);
+        if (here) {
+          if (here.state === 'sit') here.sitDur = 0; // 安排它跳回水里
           return;
-        } else if (this.frog.state === 'sit') {
-          this.frog.sitDur = 0; // 立刻安排跳回水里
+        }
+        if (this.frogs.length < 9) {
+          const wp = this.waterPoint();
+          this.frogs.push({
+            key: best.key, state: 'jumpIn', t: 0, dur: rand(0.8, 1.0),
+            x: wp.x, y: wp.y, sx: wp.x, sy: wp.y, tx: best.x, ty: best.y,
+            dir: best.x >= wp.x ? 1 : -1,
+            jumpH: 90 + Math.abs(best.x - wp.x) * 0.25,
+            leap: 0, tilt: 0, inflate: 0,
+          });
+          this.frogSplash(wp.x, wp.y, 1.0); // 出水的水花
           return;
         }
       }
@@ -1619,41 +1681,30 @@
       }
       sfx('droplet');
     },
-    /* 下雨：柔和的中频嘶声 + 低频厚度 + 密集细碎的雨点 + 偶尔近处一滴；强度时大时小 */
+    /* 下雨：以成片细碎的雨点为主体，加一层很轻的高频沙沙；强度时大时小 */
     sound(A, out) {
       const c = A.ctx;
-      // 主体：滚降高频的嘶声（不再是刺耳的窄带白噪）
-      const body = A.noise();
-      const bf = c.createBiquadFilter();
-      bf.type = 'lowpass'; bf.frequency.value = 1900;
-      const bg = c.createGain(); bg.gain.value = 0.085;
-      body.connect(bf); bf.connect(bg); bg.connect(out);
-      // 低频的"厚度"，去掉单薄的收音机感
-      const rumble = A.noise();
-      const rf = c.createBiquadFilter();
-      rf.type = 'lowpass'; rf.frequency.value = 340;
-      const rg = c.createGain(); rg.gain.value = 0.05;
-      rumble.connect(rf); rf.connect(rg); rg.connect(out);
-      // 缓慢移动的滤波，让嘶声有一点呼吸
-      const lfo = c.createOscillator(); lfo.frequency.value = 0.08;
-      const lg = c.createGain(); lg.gain.value = 450;
-      lfo.connect(lg); lg.connect(bf.frequency); lfo.start();
+      // 雨幕的高频沙沙底（带通偏高，避免低频造成"浪涌"感），保持很轻
+      const hiss = A.noise();
+      const hf = c.createBiquadFilter();
+      hf.type = 'highpass'; hf.frequency.value = 2200;
+      const hg = c.createGain(); hg.gain.value = 0.05;
+      hiss.connect(hf); hf.connect(hg); hg.connect(out);
       const ph1 = rand(0, 7), ph2 = rand(0, 7);
       let nextDrop = rand(1.5, 3), acc = 0;
       return {
         update(t, dt) {
           const inten = Math.max(0, Math.min(1,
             0.5 + 0.4 * Math.sin(t * 0.07 + ph1) + 0.22 * Math.sin(t * 0.019 + ph2)));
-          bg.gain.setTargetAtTime(0.05 + 0.10 * inten, c.currentTime, 0.5);
-          rg.gain.setTargetAtTime(0.03 + 0.05 * inten, c.currentTime, 0.5);
-          // 成片的细碎雨点（雨越大，落得越密）
-          acc += (dt || 0.016) * (10 + 20 * inten);
+          hg.gain.setTargetAtTime(0.03 + 0.05 * inten, c.currentTime, 0.5);
+          // 雨声主体：大量随机的细碎雨点（雨越大，落得越密）
+          acc += (dt || 0.016) * (24 + 40 * inten);
           let guard = 0;
-          while (acc >= 1 && guard++ < 6) { acc -= 1; A.raintick(out); }
+          while (acc >= 1 && guard++ < 9) { acc -= 1; A.raintick(out); }
           // 偶尔一滴近处清脆的水声
           if (t >= nextDrop) { nextDrop = t + rand(1.5, 3); A.droplet(out); }
         },
-        dispose() { stopAll([body, rumble, lfo]); },
+        dispose() { stopAll([hiss]); },
       };
     },
   };
