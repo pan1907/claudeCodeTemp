@@ -221,15 +221,18 @@
     ctx.fillStyle = g;
     // 流线型的身体与尾鳍
     ctx.beginPath();
-    ctx.moveTo(44, -1);                                // 吻尖
-    ctx.bezierCurveTo(36, -8, 22, -12, 6, -12.5);      // 额隆与背
-    ctx.bezierCurveTo(-10, -12.5, -24, -8, -33, -3);   // 背线收向尾柄
+    ctx.moveTo(45, -1.5);                              // 吻尖：细长微翘的喙
+    ctx.bezierCurveTo(41, -3, 37, -3.6, 33, -4);       // 喙上缘（细窄）
+    ctx.bezierCurveTo(30, -8.5, 25, -11.5, 17, -12.8); // 圆鼓的额隆，与喙之间有一级台阶
+    ctx.bezierCurveTo(3, -13.6, -12, -12, -24, -8);    // 背
+    ctx.bezierCurveTo(-29, -5.6, -32, -4, -33, -3);    // 收向尾柄
     ctx.bezierCurveTo(-38, -7, -45, -11, -50, -12);    // 上尾叶
     ctx.bezierCurveTo(-44, -5, -43, -1, -43, 0);       // 尾凹
     ctx.bezierCurveTo(-43, 1, -44, 5, -50, 12);        // 下尾叶
     ctx.bezierCurveTo(-45, 11, -38, 7, -33, 3);        // 回到尾柄
-    ctx.bezierCurveTo(-22, 7.5, -6, 9.5, 8, 8.5);      // 腹线
-    ctx.bezierCurveTo(24, 7, 36, 4, 44, -1);
+    ctx.bezierCurveTo(-22, 7.5, -8, 9.5, 6, 8.8);      // 腹线
+    ctx.bezierCurveTo(18, 8, 27, 5.5, 33, 2.6);        // 下颌收窄
+    ctx.bezierCurveTo(38, 1.2, 42, -0.2, 45, -1.5);    // 喙下缘回到吻尖
     ctx.closePath();
     ctx.fill();
     // 背鳍：后掠的弯刀形
@@ -246,10 +249,18 @@
     ctx.bezierCurveTo(3, 10, 7, 6, 14, 5);
     ctx.closePath();
     ctx.fill();
-    // 眼
-    ctx.fillStyle = na > 0.5 ? 'rgba(20,30,50,0.7)' : 'rgba(10,16,28,0.8)';
+    // 海豚标志性的"微笑"唇线
+    ctx.strokeStyle = na > 0.5 ? 'rgba(30,45,70,0.5)' : 'rgba(10,18,30,0.5)';
+    ctx.lineWidth = 0.9;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.arc(27, -3.5, 1.3, 0, Math.PI * 2);
+    ctx.moveTo(43.5, 0);
+    ctx.quadraticCurveTo(36, 2.6, 30.5, 1.2);
+    ctx.stroke();
+    // 眼：在额隆下方、唇线后上方
+    ctx.fillStyle = na > 0.5 ? 'rgba(20,30,50,0.75)' : 'rgba(10,16,28,0.85)';
+    ctx.beginPath();
+    ctx.arc(25, -4, 1.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
@@ -1461,7 +1472,7 @@
 
   const farming = {
     name: '种地',
-    YEAR: 240,        // 一年约 4 分钟，四季缓缓更替
+    YEAR: 360,        // 一年约 6 分钟：每季一分半，足够农人慢慢走完一趟
     t0: 0,
     crops: [],
     parts: [],        // 飘浮的花瓣 / 谷粒 / 水滴 / 雪沫
@@ -1475,7 +1486,7 @@
     init() {
       this.inited = true;
       this.t0 = performance.now() / 1000;
-      const count = Math.round(Math.min(90, W / 15));
+      const count = Math.round(Math.min(150, W / 9));
       this.crops = [];
       for (let i = 0; i < count; i++) {
         const x = (i + 0.5) / count * W + rand(-5, 5);
@@ -1491,10 +1502,19 @@
         x: rand(0, W), y: rand(0, H * 0.5),
         r: rand(0.4, 1.3), phase: rand(0, 7), blink: rand(0.3, 1),
       }));
-      // 屋边的苹果树：固定的树冠簇、果位与花位，随四季换装
+      // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.072;
       this.tree0 = {
         x: W * 0.795, R: tR,
+        branches: [
+          { h: 0.46, side: -1, len: 1.00, lift: 0.50, twig: true },
+          { h: 0.38, side: 1,  len: 0.90, lift: 0.62, twig: false },
+          { h: 0.26, side: -1, len: 0.72, lift: 0.85, twig: true },
+          { h: 0.18, side: 1,  len: 0.80, lift: 0.95, twig: true },
+          { h: 0.08, side: -1, len: 0.50, lift: 1.15, twig: false },
+          { h: 0.02, side: 1,  len: 0.42, lift: 1.25, twig: false },
+          { h: 0.00, side: 0.2, len: 0.10, lift: 1.45, twig: false }, // 顶梢
+        ].map(b => ({ ...b, len: b.len * rand(0.92, 1.08) })),
         clusters: Array.from({ length: 22 }, () => {
           const ang = rand(0, Math.PI * 2), rr = Math.sqrt(Math.random());
           return {
@@ -1503,7 +1523,7 @@
             r: rand(tR * 0.30, tR * 0.46), ph: rand(0, 7),
           };
         }),
-        apples: Array.from({ length: 7 }, () => ({ dx: rand(-tR * 0.7, tR * 0.7), dy: rand(-tR * 0.15, tR * 0.55) })),
+        apples: Array.from({ length: 8 }, () => ({ dx: rand(-tR * 0.8, tR * 0.8), dy: rand(-tR * 0.5, tR * 0.45) })),
         blossoms: Array.from({ length: 16 }, () => ({ dx: rand(-tR * 0.85, tR * 0.85), dy: rand(-tR * 0.75, tR * 0.3) })),
       };
     },
@@ -1515,53 +1535,49 @@
     },
     horizon() { return H * 0.83; },  // 地平线靠下，田土只占薄薄一条
     cropH() { return H * 0.045; },   // 稻子比较矮，明显低于农人
-    /* 画一株作物（或收割后的短茬） */
+    /* 画一丛稻：三秆错落呈扇形，成熟时每秆垂下一束稻穗 */
     stalk(c, gold, t, nk) {
       const hY = this.horizon();
       const sh = 1 - 0.5 * nk;
       if (c.cut) {
         ctx.strokeStyle = `rgba(${172 * sh | 0},${134 * sh | 0},${70 * sh | 0},0.9)`;
-        ctx.lineWidth = 1.8;
+        ctx.lineWidth = 1.4;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(c.x, hY);
-        ctx.lineTo(c.x + c.lean * 6, hY - 7);
+        for (const ox of [-2.5, 0, 2.5]) {
+          ctx.moveTo(c.x + ox, hY);
+          ctx.lineTo(c.x + ox + c.lean * 5, hY - 6);
+        }
         ctx.stroke();
         return;
       }
-      const h = this.cropH() * c.grow * c.base;
-      if (h < 2) return;
-      const topX = c.x + Math.sin(t * 0.5 + c.sway) * 5 * c.grow + c.lean * h;
-      const topY = hY - h;
+      const hBase = this.cropH() * c.grow * c.base;
+      if (hBase < 2) return;
       // 秋天向饱满的金黄过渡
       const cr = lerp(110, 218, gold) * sh, cg = lerp(170, 166, gold) * sh, cb = lerp(70, 58, gold) * sh;
-      ctx.strokeStyle = `rgb(${cr | 0},${cg | 0},${cb | 0})`;
-      ctx.lineWidth = 1.6 + c.grow * 1.2;
+      const stem = `rgb(${cr | 0},${cg | 0},${cb | 0})`;
       ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(c.x, hY);
-      ctx.quadraticCurveTo((c.x + topX) / 2 - c.lean * 6, hY - h * 0.5, topX, topY);
-      ctx.stroke();
-      // 叶片
-      if (c.grow > 0.4) {
-        ctx.lineWidth = 1.2;
-        for (const ly of [0.45, 0.7]) {
-          const lx = lerp(c.x, topX, ly), lyy = hY - h * ly, side = ly === 0.45 ? 1 : -1;
+      for (let i = 0; i < 3; i++) {
+        const ox = (i - 1) * 2.6;
+        const lean2 = c.lean + (i - 1) * 0.14;
+        const h = hBase * (i === 1 ? 1 : 0.85);
+        const topX = c.x + ox + Math.sin(t * 0.5 + c.sway + i) * 4 * c.grow + lean2 * h;
+        const topY = hY - h;
+        ctx.strokeStyle = stem;
+        ctx.lineWidth = 1.1 + c.grow * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(c.x + ox, hY);
+        ctx.quadraticCurveTo((c.x + ox + topX) / 2 - lean2 * 5, hY - h * 0.5, topX, topY);
+        ctx.stroke();
+        // 成熟后低垂的稻穗
+        if (gold > 0.05 && c.grow > 0.7) {
+          ctx.strokeStyle = `rgba(${236 * sh | 0},${198 * sh | 0},${96 * sh | 0},${gold})`;
+          ctx.lineWidth = 2.2;
           ctx.beginPath();
-          ctx.moveTo(lx, lyy);
-          ctx.quadraticCurveTo(lx + side * 9, lyy - 3, lx + side * 13, lyy - 8);
+          ctx.moveTo(topX, topY);
+          ctx.quadraticCurveTo(topX + 4 + (i - 1), topY + 1, topX + 3 + (i - 1) * 1.5, topY + 6);
           ctx.stroke();
         }
-      }
-      // 成熟后低垂的稻穗
-      if (gold > 0.05 && c.grow > 0.7) {
-        ctx.strokeStyle = `rgba(${236 * sh | 0},${198 * sh | 0},${96 * sh | 0},${gold})`;
-        ctx.lineWidth = 2.4;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        ctx.moveTo(topX, topY);
-        ctx.quadraticCurveTo(topX + 5, topY + 1, topX + 4, topY + 7); // 稻穗沉甸甸地垂下
-        ctx.stroke();
       }
     },
     /* 戴斗笠的农人：小巧、圆润、流线的剪影 */
@@ -1675,7 +1691,9 @@
         ctx.fill();
       }
     },
-    /* 屋边的苹果树：抽叶、开花、结果、叶黄、落叶、冬日挂雪 */
+    /* 屋边的苹果树。一年的顺序遵循真实规律：
+       春花未叶先 → 夏满冠浓绿、果子悄悄长大 → 初秋绿叶间红果成熟、收果 →
+       收完果叶子才转黄、飘落 → 冬日光枝挂雪 */
     tree(si, sp, t, nk, dt) {
       const cl = v => Math.max(0, Math.min(1, v));
       const tr = this.tree0, R = tr.R, x = tr.x, hY = this.horizon();
@@ -1683,34 +1701,72 @@
       const topY = hY - trunkH;
       const cy = topY - R * 0.30;       // 树冠中心
       const dk = 1 - 0.55 * nk;
-      let leaf = 0, gold = 0, blossom = 0, apple = 0, snow = 0;
+      let leaf = 0, gold = 0, blossom = 0, apple = 0, ripen = 0, snow = 0;
       if (si === 0) {                   // 春：先开花，后抽叶
         blossom = cl((sp - 0.10) / 0.18) * cl((0.62 - sp) / 0.25);
         leaf = cl((sp - 0.42) / 0.5);
-      } else if (si === 1) {            // 夏：枝繁叶茂
+      } else if (si === 1) {            // 夏：枝繁叶茂，季末果子悄悄长大（青色）
         leaf = 1;
-      } else if (si === 2) {            // 秋：叶转金黄、结出红苹果，随后落叶
-        leaf = 1 - cl((sp - 0.55) / 0.42);
-        gold = cl((sp - 0.05) / 0.35);
-        apple = cl((sp - 0.05) / 0.25) * cl((0.88 - sp) / 0.18);
-      } else {                          // 冬：枝桠覆雪
+        apple = cl((sp - 0.70) / 0.30) * 0.9;
+        ripen = cl((sp - 0.70) / 0.30) * 0.4;
+      } else if (si === 2) {            // 秋：绿叶间果子转红、被收走，然后叶子才转黄、飘落
+        apple = sp < 0.38 ? 1 : cl((0.46 - sp) / 0.08);
+        ripen = Math.min(1, 0.4 + sp / 0.38 * 0.6);
+        gold = cl((sp - 0.45) / 0.30);
+        leaf = 1 - cl((sp - 0.65) / 0.30);
+        // 收果时偶有苹果落下
+        if (sp > 0.36 && sp < 0.46 && Math.random() < dt * 3 && this.parts.length < 90) {
+          this.parts.push({
+            x: x + rand(-R * 0.7, R * 0.7), y: cy + rand(-R * 0.3, R * 0.4),
+            vx: rand(-4, 4), vy: 10, g: 300,
+            r: 3, phase: rand(0, 7), life: 0, dur: 1.0,
+            alpha: 0.95, c: [198, 50, 44],
+          });
+        }
+      } else {                          // 冬：光枝挂雪
         snow = cl(sp / 0.4);
       }
 
-      // 树干与枝桠
-      ctx.strokeStyle = `rgb(${80 * dk | 0},${58 * dk | 0},${40 * dk | 0})`;
+      // 树干
+      const wood = `rgb(${80 * dk | 0},${58 * dk | 0},${40 * dk | 0})`;
+      ctx.strokeStyle = wood;
       ctx.lineCap = 'round';
       ctx.lineWidth = R * 0.17;
       ctx.beginPath();
       ctx.moveTo(x, hY);
       ctx.quadraticCurveTo(x - 2, hY - trunkH * 0.55, x, topY + R * 0.18);
       ctx.stroke();
-      ctx.lineWidth = R * 0.1;
-      for (const b of [[-1, 0.55], [1, 0.42], [-1, 0.16], [1, 0.08]]) {
+      // 错落的枝桠：主枝渐细、带小杈
+      const tips = [];
+      for (const b of tr.branches) {
+        const ay = topY + R * b.h;
+        const ex = x + b.side * R * b.len;
+        const ey = ay - R * b.lift * 0.55;
+        const cxm = x + b.side * R * b.len * 0.35, cym = ay - R * b.lift * 0.12;
+        ctx.lineWidth = R * 0.075;
         ctx.beginPath();
-        ctx.moveTo(x, topY + R * 0.32 * b[1]);
-        ctx.quadraticCurveTo(x + b[0] * R * 0.4, topY - R * 0.05, x + b[0] * R * 0.72, cy - R * 0.18);
+        ctx.moveTo(x, ay);
+        ctx.quadraticCurveTo(cxm, cym, ex, ey);
         ctx.stroke();
+        // 枝梢更细的一截
+        const tx = ex + b.side * R * 0.22, ty = ey - R * 0.16;
+        ctx.lineWidth = R * 0.034;
+        ctx.beginPath();
+        ctx.moveTo(ex, ey);
+        ctx.lineTo(tx, ty);
+        ctx.stroke();
+        tips.push([ex, ey], [tx, ty]);
+        // 小杈
+        if (b.twig) {
+          const mx = (x + ex) / 2 + b.side * R * 0.06, my = (ay + ey) / 2 - R * 0.04;
+          const wx = mx + b.side * R * 0.16, wy = my - R * 0.24;
+          ctx.lineWidth = R * 0.03;
+          ctx.beginPath();
+          ctx.moveTo(mx, my);
+          ctx.lineTo(wx, wy);
+          ctx.stroke();
+          tips.push([wx, wy]);
+        }
       }
 
       // 树冠：半透明的圆簇叠成柔和的轮廓
@@ -1733,17 +1789,19 @@
           ctx.fill();
         }
       }
-      // 红苹果
+      // 苹果：夏末青绿，入秋转红
       if (apple > 0.02) {
+        const ac = lerpC([128, 158, 72], [198, 48, 42], ripen);
+        const aR = R * 0.085 * (si === 1 ? 0.5 + 0.5 * cl((sp - 0.70) / 0.30) : 1);
         for (const ap of tr.apples) {
-          ctx.fillStyle = `rgba(${198 * dk | 0},${52 * dk | 0},${44 * dk | 0},${apple})`;
+          ctx.fillStyle = `rgba(${ac[0] * dk | 0},${ac[1] * dk | 0},${ac[2] * dk | 0},${apple})`;
           ctx.beginPath();
-          ctx.arc(x + ap.dx, cy + ap.dy, R * 0.085, 0, Math.PI * 2);
+          ctx.arc(x + ap.dx, cy + ap.dy, aR, 0, Math.PI * 2);
           ctx.fill();
         }
       }
       // 深秋落叶
-      if (si === 2 && sp > 0.55 && Math.random() < dt * 6 && this.parts.length < 90) {
+      if (si === 2 && sp > 0.65 && Math.random() < dt * 6 && this.parts.length < 90) {
         this.parts.push({
           x: x + rand(-R, R), y: cy + rand(-R * 0.5, R * 0.5),
           vx: rand(-12, 12), vy: rand(8, 18), g: 6,
@@ -1751,13 +1809,32 @@
           alpha: 0.85, c: [210, 150, 60],
         });
       }
-      // 冬日枝头积雪
+      // 冬日积雪：顺着每根枝桠铺一道雪线，枝头结出雪团
       if (snow > 0.02) {
-        ctx.fillStyle = `rgba(238, 242, 250, ${snow * 0.82})`;
-        for (let i = 0; i < tr.clusters.length; i += 3) {
-          const c = tr.clusters[i];
+        const sc = `rgba(238, 242, 250, ${snow * 0.9})`;
+        ctx.strokeStyle = sc;
+        ctx.lineCap = 'round';
+        // 树干上的雪
+        ctx.lineWidth = R * 0.06;
+        ctx.beginPath();
+        ctx.moveTo(x - R * 0.05, hY - trunkH * 0.3);
+        ctx.quadraticCurveTo(x - R * 0.07, hY - trunkH * 0.6, x - R * 0.03, topY + R * 0.2);
+        ctx.stroke();
+        for (const b of tr.branches) {
+          const ay = topY + R * b.h;
+          const ex = x + b.side * R * b.len;
+          const ey = ay - R * b.lift * 0.55;
+          const cxm = x + b.side * R * b.len * 0.35, cym = ay - R * b.lift * 0.12;
+          ctx.lineWidth = R * 0.045;
           ctx.beginPath();
-          ctx.ellipse(x + c.dx, cy + c.dy, c.r * 0.5, c.r * 0.26, 0, 0, Math.PI * 2);
+          ctx.moveTo(x, ay - R * 0.045);
+          ctx.quadraticCurveTo(cxm, cym - R * 0.045, ex, ey - R * 0.04);
+          ctx.stroke();
+        }
+        ctx.fillStyle = sc;
+        for (const [px, py] of tips) {
+          ctx.beginPath();
+          ctx.ellipse(px, py - R * 0.03, R * 0.085, R * 0.05, 0, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -1907,23 +1984,22 @@
         });
       }
 
-      // 农人：日出而作，日落而息。脚步很慢——一趟走多远算多远，不强求来回
+      // 农人：日出而作，日落而息。匀速缓行，一季正好走完一趟
       this.farmDir = 1;
-      const seasonSec = this.YEAR / 4;
-      const slow = Math.min(W, H) * 0.020;            // 缓慢的步速（约每秒画面的 2%）
-      const passX = (startSp, x0f) => W * x0f + slow * Math.max(0, (st.sp - startSp) * seasonSec);
       let action = null, fx = 0;
       if (nk < 0.5) {
         if (si === 0 && st.sp > 0.04 && st.sp < 0.58) {         // 春：缓步撒种
-          fx = passX(0.04, 0.07); action = 'sow';
+          fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'sow';
         } else if (si === 1 && st.sp > 0.04 && st.sp < 0.58) {  // 夏：缓步浇水
-          fx = passX(0.04, 0.07); action = 'water';
+          fx = W * (0.07 + 0.66 * (st.sp - 0.04) / 0.54); action = 'water';
         } else if (si === 2 && st.sp > 0.05 && st.sp < 0.26) {  // 秋：背手查看长势
-          fx = passX(0.05, 0.10); action = 'walk';
+          fx = W * (0.10 + 0.52 * (st.sp - 0.05) / 0.21); action = 'walk';
         } else if (si === 2 && st.sp >= 0.28 && st.sp < 0.60) { // 秋：挥镰收割
-          fx = passX(0.28, 0.05); action = 'cut';
+          const hp = (st.sp - 0.28) / 0.32;
+          fx = W * (0.05 + 0.71 * hp);
+          action = 'cut';
           for (const c of this.crops) {
-            if (!c.cut && c.x < fx - 6 && c.x < W * 0.76) {
+            if (!c.cut && c.x < W * 0.76 && (c.x < fx - 6 || hp > 0.97)) {
               c.cut = true;
               const h = this.cropH() * c.grow * c.base;
               for (let i = 0; i < 2; i++) this.spawnPart(c.x, hY - h * 0.7, [232, 190, 92], -30, 130, rand(0.9, 1.4));
