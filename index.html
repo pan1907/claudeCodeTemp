@@ -2196,9 +2196,12 @@
       this.snowPh = rand(0, 7);
       this.cat = { x: W * 0.5, dir: 1, state: 'sit', timer: 3, target: W * 0.5, jump: 0, bonk: 0 };
       this.fallApples = [];   // 从树上掉落的苹果
-      this.daw = null;        // 冬日偶尔飞过的寒鸦
+      this.daw = null;        // 寒鸦：冬日飞过 / 秋日飞来吃苹果
       this.winterRolled = false;
+      this.autumnRolled = false;
       this.dawSpawnT = Infinity;
+      this.eatenApple = -1;   // 被寒鸦吃掉的那颗苹果（当年秋天内保持消失）
+      this.dawEat = 0;        // 啄食进度 0→1（苹果缩小）
       this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
@@ -2579,10 +2582,14 @@
       if (apple > 0.02) {
         const ac = lerpC([128, 158, 72], [198, 48, 42], ripen);
         const aR = R * 0.085 * (si === 1 ? 0.5 + 0.5 * cl((sp - 0.70) / 0.30) : 1);
-        for (const ap of tr.apples) {
+        for (let ai = 0; ai < tr.apples.length; ai++) {
+          const ap = tr.apples[ai];
+          // 被寒鸦啄食的那颗会一口口缩小消失
+          const r = ai === this.eatenApple ? aR * Math.max(0, 1 - this.dawEat) : aR;
+          if (r < 0.4) continue;
           ctx.fillStyle = `rgba(${ac[0] * dk | 0},${ac[1] * dk | 0},${ac[2] * dk | 0},${apple})`;
           ctx.beginPath();
-          ctx.arc(x + ap.dx + shx * 0.9, cy + ap.dy, aR, 0, Math.PI * 2);
+          ctx.arc(x + ap.dx + shx * 0.9, cy + ap.dy, r, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -2906,15 +2913,114 @@
         ctx.beginPath(); ctx.moveTo(ap.x, ap.y - ap.r); ctx.lineTo(ap.x + 1.5, ap.y - ap.r - 3); ctx.stroke();
       }
     },
-    /* 造一只飞过的寒鸦 */
+    /* 造一只飞过的寒鸦（冬日） */
     makeDaw() {
       const dir = Math.random() < 0.5 ? 1 : -1;
       return {
-        dir, x: dir > 0 ? -70 : W + 70,
+        mode: 'fly', dir, x: dir > 0 ? -70 : W + 70,
         y: rand(H * 0.14, H * 0.30),
         vx: dir * rand(40, 58), phase: rand(0, 7),
         nextCaw: rand(1.8, 3.6), caws: 1 + (Math.random() < 0.5 ? 1 : 0),
       };
+    },
+    // 苹果树冠中心（与 tree() 内一致），用来定位树上的苹果
+    canopyCenter() {
+      const tr = this.tree0, R = tr.R, hY = this.horizon();
+      return { x: tr.x, cy: (hY - R * 1.55) - R * 0.30, R };
+    },
+    /* 造一只飞来吃苹果的寒鸦（秋日）：挑一颗树上的苹果，从近的一侧飞来停在它旁边 */
+    makeEatDaw() {
+      const cc = this.canopyCenter(), tr = this.tree0;
+      const idx = Math.floor(rand(0, tr.apples.length));
+      const ap = tr.apples[idx];
+      const ax = cc.x + ap.dx, ay = cc.cy + ap.dy;
+      const fromLeft = ax < W * 0.5;
+      const side = fromLeft ? -1 : 1;          // 停在苹果靠外的一侧
+      const px = ax - side * tr.R * 0.16, py = ay - tr.R * 0.12;
+      return {
+        mode: 'eat', state: 'approach', appleIdx: idx, ax, ay, px, py,
+        x: fromLeft ? -70 : W + 70, y: rand(H * 0.10, H * 0.22),
+        sx: fromLeft ? -70 : W + 70, sy: rand(H * 0.10, H * 0.22),
+        dir: fromLeft ? 1 : -1,                // 飞行朝向
+        faceDir: ax >= px ? 1 : -1,            // 停栖时朝向苹果
+        phase: rand(0, 7), t: 0, dur: rand(1.8, 2.6),
+        pecks: 4 + Math.floor(Math.random() * 3), peck: 0, lastPeck: -1,
+        cawed: false, vx: 0, vy: 0,
+      };
+    },
+    stepEatDaw(k, dt, t) {
+      if (k.state === 'approach') {
+        k.t += dt; const p = Math.min(1, k.t / k.dur);
+        k.x = lerp(k.sx, k.px, p);
+        k.y = lerp(k.sy, k.py, p) - Math.sin(p * Math.PI) * Math.min(W, H) * 0.05; // 一道下降弧
+        this.drawDaw(k, t);                    // 飞行姿态
+        if (p >= 1) { k.state = 'eat'; k.t = 0; this.eatenApple = k.appleIdx; this.dawEat = 0; }
+      } else if (k.state === 'eat') {
+        k.x = k.px; k.y = k.py; k.t += dt;
+        if (!k.cawed && k.t > 0.5 && Math.random() < dt * 0.9) { k.cawed = true; sfx('caw'); }
+        const cyc = 0.55;
+        k.peck = Math.max(0, Math.sin(Math.PI * (k.t % cyc) / cyc));   // 每周期低头一次
+        const pd = Math.floor(k.t / cyc);
+        if (pd > k.lastPeck) {
+          k.lastPeck = pd;
+          if (pd >= 1) {
+            this.dawEat = Math.min(1, pd / k.pecks);
+            this.spawnPart(k.ax, k.ay, [198, 48, 42], -16, 130, rand(0.5, 0.9)); // 啄落的小果屑
+          }
+        }
+        this.drawDawPerched(k, t);
+        if (pd >= k.pecks) {                   // 吃完，飞走
+          this.dawEat = 1;
+          k.state = 'leave';
+          k.dir = k.px < W * 0.5 ? -1 : 1;
+          k.vx = k.dir * rand(55, 75); k.vy = -rand(24, 42);
+        }
+      } else {                                 // leave
+        k.x += k.vx * dt; k.y += k.vy * dt; k.vy += 3 * dt;
+        this.drawDaw(k, t);
+        if (k.x < -90 || k.x > W + 90 || k.y < -70) this.daw = null;
+      }
+    },
+    /* 停在树上的寒鸦：翅膀收起、立着，啄食时头一下下低向苹果 */
+    drawDawPerched(k, t) {
+      const u = Math.min(W, H) * 0.00102;
+      const d = k.faceDir;
+      const peck = k.peck || 0;
+      ctx.save();
+      ctx.translate(k.x, k.y);
+      ctx.scale(d, 1);
+      const body = 'rgba(46,48,54,0.96)', nape = 'rgba(120,124,134,0.96)';
+      // 腿
+      ctx.strokeStyle = 'rgba(26,26,30,0.95)'; ctx.lineWidth = 1.5 * u; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(-2 * u, 8 * u); ctx.lineTo(-3 * u, 13 * u);
+      ctx.moveTo(3 * u, 8 * u); ctx.lineTo(2 * u, 13 * u);
+      ctx.stroke();
+      // 尾（向后下垂）
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.moveTo(-9 * u, 2 * u); ctx.lineTo(-19 * u, 8 * u); ctx.lineTo(-17 * u, -1 * u); ctx.closePath(); ctx.fill();
+      // 胖身子（立着）
+      ctx.beginPath(); ctx.ellipse(0, 0, 10.5 * u, 10 * u, 0, 0, Math.PI * 2); ctx.fill();
+      // 收起的翅膀贴在身上
+      ctx.fillStyle = 'rgba(34,36,42,0.96)';
+      ctx.beginPath();
+      ctx.moveTo(2 * u, -5 * u); ctx.quadraticCurveTo(-10 * u, -3 * u, -13 * u, 6 * u);
+      ctx.quadraticCurveTo(-4 * u, 2 * u, 3 * u, 1 * u); ctx.closePath(); ctx.fill();
+      // 头：啄食时下沉前倾
+      const hx = (8 - peck * 2) * u, hy = (-8 + peck * 14) * u;
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.arc(hx, hy, 6.6 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = nape;
+      ctx.beginPath(); ctx.arc(hx - 3 * u, hy + 1 * u, 5 * u, -0.4, 1.8); ctx.fill();
+      // 喙（朝前下，啄食时下压）
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(peck * 0.5);
+      ctx.fillStyle = 'rgba(26,26,30,0.96)';
+      ctx.beginPath(); ctx.moveTo(5 * u, -1 * u); ctx.lineTo(12 * u, 1 * u); ctx.lineTo(5 * u, 2.5 * u); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      // 大眼珠
+      ctx.fillStyle = '#f4f1e8'; ctx.beginPath(); ctx.arc(hx + 2 * u, hy - 1 * u, 2.7 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a1a20'; ctx.beginPath(); ctx.arc(hx + 3 * u, hy - 1 * u, 1.4 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
     },
     /* 偏卡通的寒鸦：胖身子、大头、大眼珠、灰颈，扇动翅膀飞过 */
     drawDaw(k, t) {
@@ -2987,14 +3093,23 @@
       this.lastSi = si;
       // 落果前后（秋天 sp 0.20~0.46），猫挑目标时有概率选到树下，自然溜达过去
       this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.40 : 0;
-      // 入冬时掷一次骰子：约三成的冬天会有一只寒鸦，并在入冬一段时间之后才飞过
-      if (si === 3) {
+      // 季节性的寒鸦：秋天约三成会飞来吃一颗苹果；冬天约三成会飞过天空
+      if (si !== 2) { this.eatenApple = -1; this.dawEat = 0; }
+      if (si === 2) {                          // 秋：飞来吃苹果（果子还在树上时）
+        this.winterRolled = false;
+        if (!this.autumnRolled && st.sp > 0.08) {
+          this.autumnRolled = true;
+          this.dawSpawnT = (Math.random() < 0.30) ? t + rand(2, 8) : Infinity;
+        }
+        if (t >= this.dawSpawnT && !this.daw) { this.daw = this.makeEatDaw(); this.dawSpawnT = Infinity; }
+      } else if (si === 3) {                   // 冬：飞过天空
+        this.autumnRolled = false;
         if (!this.winterRolled) {
           this.winterRolled = true;
           this.dawSpawnT = (Math.random() < 0.30) ? t + rand(10, 24) : Infinity;
         }
-        if (t >= this.dawSpawnT) { this.daw = this.makeDaw(); this.dawSpawnT = Infinity; }
-      } else { this.winterRolled = false; this.daw = null; this.dawSpawnT = Infinity; }
+        if (t >= this.dawSpawnT && !this.daw) { this.daw = this.makeDaw(); this.dawSpawnT = Infinity; }
+      } else { this.winterRolled = false; this.autumnRolled = false; this.daw = null; this.dawSpawnT = Infinity; }
       const A = SEASONS[si], B = SEASONS[(si + 1) % 4];
       const hY = this.horizon();
       // 天色与土色：季节之间过渡，再压上夜色
@@ -3201,16 +3316,23 @@
       // 掉落的苹果（可能砸到树下的猫）
       this.stepApples(dt);
 
-      // 冬日飞过的寒鸦
+      // 寒鸦
       if (this.daw) {
         const k = this.daw;
-        k.x += k.vx * dt;
-        if (k.caws > 0) {
-          k.nextCaw -= dt;
-          if (k.nextCaw <= 0) { k.nextCaw = rand(2.2, 4); k.caws--; sfx('caw'); }
+        // 季节不符就让它消失，避免跨季残留
+        if ((k.mode === 'eat' && si !== 2) || (k.mode === 'fly' && si !== 3)) {
+          this.daw = null;
+        } else if (k.mode === 'eat') {
+          this.stepEatDaw(k, dt, t);
+        } else {
+          k.x += k.vx * dt;
+          if (k.caws > 0) {
+            k.nextCaw -= dt;
+            if (k.nextCaw <= 0) { k.nextCaw = rand(2.2, 4); k.caws--; sfx('caw'); }
+          }
+          this.drawDaw(k, t);
+          if (k.x < -90 || k.x > W + 90) this.daw = null;
         }
-        this.drawDaw(k, t);
-        if (k.x < -90 || k.x > W + 90) this.daw = null;
       }
 
       // 飘浮的颗粒（花瓣 / 谷粒 / 水滴 / 雪）
