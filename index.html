@@ -3133,31 +3133,61 @@
       };
     },
     stepKid(dt, t) {
-      const k = this.kid, g = this.horizon() + 1, u = Math.min(W, H) * 0.0011;
+      const k = this.kid, g = this.horizon() + 1, u = Math.min(W, H) * 0.0011, m = Math.min(W, H);
       k.t += dt;
+      // 被踢飞的球：一直更新到出屏
+      if (k.ballFlying) {
+        k.ballX += k.ballVX * dt; k.ballY += k.ballVY * dt; k.ballVY += m * 0.9 * dt; k.ballRot -= dt * 17;
+        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+        if (k.ballX < -50 || k.ballY > g + 30 || k.ballY < -80) k.ballFlying = false;
+      }
       if (k.state === 'out') {                 // 跑出门、到垫球点
         const p = Math.min(1, k.t / k.outDur);
         k.x = lerp(k.x0, k.jx, p);
         k.run = Math.sin(t * 9);
         k.ballX = k.x - 13 * u; k.ballY = g - k.ballR; k.ballRot -= (k.jx - k.x0) / k.outDur * dt / k.ballR;
-        this.drawKid(k, t, 'run'); this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'run');
         if (p >= 1) { k.state = 'juggle'; k.t = 0; }
       } else if (k.state === 'juggle') {       // 脚上垫几下球
         const cyc = 0.6, ph = (k.t % cyc) / cyc;
-        const bounce = Math.sin(Math.PI * ph);            // 0 在脚面、1 在最高
-        k.footRaise = Math.max(0, Math.cos(Math.PI * ph)); // 触球瞬间脚抬起
-        k.ballX = k.x - 9 * u;
-        k.ballY = g - 12 * u - bounce * 32 * u;
-        k.ballRot += dt * 6;
-        const jd = Math.floor(k.t / cyc);
-        if (jd > k.jdone) { k.jdone = jd; }
-        this.drawKid(k, t, 'juggle'); this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
-        if (jd >= k.juggles) { k.state = 'dribble'; k.t = 0; }
-      } else {                                 // 带球从左边跑出去
-        k.x -= k.spd * dt;
-        k.run = Math.sin(t * 11);
-        k.ballX = k.x - 16 * u; k.ballY = g - k.ballR; k.ballRot -= k.spd * dt / k.ballR;
-        this.drawKid(k, t, 'run'); this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+        const bounce = Math.sin(Math.PI * ph);
+        k.footRaise = Math.max(0, Math.cos(Math.PI * ph));
+        k.ballX = k.x - 9 * u; k.ballY = g - 12 * u - bounce * 32 * u; k.ballRot += dt * 6;
+        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'juggle');
+        if (Math.floor(k.t / cyc) >= k.juggles) { k.state = 'kick'; k.t = 0; }
+      } else if (k.state === 'kick') {         // 起脚把球踢飞
+        if (!k.ballFlying && !k.kicked) {
+          if (k.t > 0.12) {                    // 触球瞬间，球飞出
+            k.kicked = true; k.ballFlying = true;
+            k.ballX = k.x - 12 * u; k.ballY = g - 11 * u;
+            k.ballVX = -m * 0.62; k.ballVY = -m * 0.42;
+          } else {
+            k.ballX = k.x - 11 * u; k.ballY = g - k.ballR;
+            this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+          }
+        }
+        this.drawKid(k, t, 'kick');
+        if (k.t > 0.42) { k.state = 'siurun'; k.t = 0; }
+      } else if (k.state === 'siurun') {       // 助跑两步
+        k.x -= m * 0.05 * dt; k.run = Math.sin(t * 13);
+        this.drawKid(k, t, 'run');
+        if (k.t > 0.55) { k.state = 'jump'; k.t = 0; k.jumpX = k.x; }
+      } else if (k.state === 'jump') {         // 腾空 + 转身
+        const dur = 0.8, p = Math.min(1, k.t / dur);
+        const yOff = -Math.sin(p * Math.PI) * 54 * u;
+        const sq = 0.55 + 0.45 * Math.abs(Math.cos(p * Math.PI));     // 横向略压一下，暗示转身（不压成细线）
+        k.x = k.jumpX - m * 0.025 * p;
+        this.drawKidFront(k, t, { air: true, spread: 0.2, armOut: 8, armDown: -26, squashX: sq, yOff });
+        if (p >= 1) {
+          k.state = 'pose'; k.t = 0;
+          for (let i = 0; i < 5; i++) this.spawnPart(k.x + rand(-6, 6), g, [214, 204, 188], -22, 90, rand(0.4, 0.7)); // 落地扬尘
+        }
+      } else if (k.state === 'pose') {         // SIUUU 定格
+        this.drawKidFront(k, t, { air: false, spread: 1, armOut: 9, armDown: -13, shout: true });
+        if (k.t > 1.7) { k.state = 'leave'; k.t = 0; }
+      } else {                                 // 跑出左边
+        k.x -= k.spd * dt; k.run = Math.sin(t * 11);
+        this.drawKid(k, t, 'run');
         if (k.x < -40) this.kid = null;
       }
     },
@@ -3189,6 +3219,9 @@
         ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();           // 支撑腿
         const fr = k.footRaise || 0;
         ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.quadraticCurveTo(7 * u, -12 * u, 9 * u, (-9 - fr * 4) * u); ctx.stroke(); // 垫球腿
+      } else if (pose === 'kick') {
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();            // 支撑腿
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(12 * u, -4 * u); ctx.stroke();        // 抬起踢出的腿
       } else {
         const s = (k.run || 0) * 5;
         ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -16 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
@@ -3211,6 +3244,45 @@
       ctx.fillStyle = 'rgba(58,42,32,0.96)';
       ctx.beginPath(); ctx.arc(1.5 * u, -37.5 * u, 5.6 * u, Math.PI * 1.02, Math.PI * 2.05); ctx.fill();
       ctx.beginPath(); ctx.arc(6 * u, -37 * u, 2 * u, Math.PI * 1.2, Math.PI * 2.2); ctx.fill();
+      ctx.restore();
+    },
+    /* 正面的小球员：用于腾空转身与 SIU 定格（叉腿、双臂下张、仰头张嘴） */
+    drawKidFront(k, t, o) {
+      const u = Math.min(W, H) * 0.0011, g = this.horizon() + 1;
+      const skin = 'rgba(247,212,180,0.97)', limb = 'rgba(60,52,46,0.92)';
+      ctx.save();
+      ctx.translate(k.x, g + (o.yOff || 0));
+      ctx.scale(o.squashX != null ? o.squashX : 1, 1);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // 腿
+      ctx.strokeStyle = limb; ctx.lineWidth = 3 * u;
+      if (o.air) {                              // 腾空：收腿
+        ctx.beginPath(); ctx.moveTo(-2 * u, -16 * u); ctx.lineTo(-5 * u, -7 * u);
+        ctx.moveTo(2 * u, -16 * u); ctx.lineTo(5 * u, -7 * u); ctx.stroke();
+      } else {                                  // 定格：叉开站立
+        const fx = (3 + o.spread * 7) * u;
+        ctx.beginPath(); ctx.moveTo(-1.5 * u, -16 * u); ctx.lineTo(-fx, 0);
+        ctx.moveTo(1.5 * u, -16 * u); ctx.lineTo(fx, 0); ctx.stroke();
+      }
+      // 身子（球衣）
+      ctx.strokeStyle = k.jersey; ctx.lineWidth = 8 * u;
+      ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(0, -30 * u); ctx.stroke();
+      // 胳膊：SIU 是双臂笔直下张、攥拳
+      ctx.strokeStyle = skin; ctx.lineWidth = 2.6 * u;
+      const ax = o.armOut * u, ay = o.armDown * u;
+      ctx.beginPath(); ctx.moveTo(-1 * u, -27 * u); ctx.lineTo(-ax, ay); ctx.moveTo(1 * u, -27 * u); ctx.lineTo(ax, ay); ctx.stroke();
+      ctx.fillStyle = skin;
+      ctx.beginPath(); ctx.arc(-ax, ay, 1.9 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(ax, ay, 1.9 * u, 0, Math.PI * 2); ctx.fill();
+      // 头（微微仰起）
+      ctx.fillStyle = skin;
+      ctx.beginPath(); ctx.arc(0, -37 * u, 5.6 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(58,42,32,0.96)';
+      ctx.beginPath(); ctx.arc(0, -39 * u, 5.7 * u, Math.PI, Math.PI * 2); ctx.fill();
+      if (o.shout) {                            // 张嘴喊 SIU
+        ctx.fillStyle = 'rgba(70,36,36,0.85)';
+        ctx.beginPath(); ctx.ellipse(0, -34.5 * u, 1.4 * u, 2.1 * u, 0, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.restore();
     },
     /* 偏卡通的寒鸦：胖身子、大头、大眼珠、灰颈，扇动翅膀飞过 */
