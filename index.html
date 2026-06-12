@@ -491,9 +491,10 @@
       doCroak(t0);
       if (Math.random() < 0.6) doCroak(t0 + rand(0.34, 0.5));  // "呱…呱"
     },
-    /* 一声撒娇猫叫（"喵呜～"）：拱形音高+起音上扬、ee→ow→闭口"oo"、尾部加深的柔和颤音、长长的拖尾 */
-    meow(out) {
-      const c = this.ctx, t0 = c.currentTime;
+    /* 一声撒娇猫叫（"喵呜～"）：拱形音高+起音上扬、ee→ow→闭口"oo"、尾部加深的柔和颤音、长长的拖尾。
+       可传入起始时间 when，便于在被砸的闷响之后紧接着发出 */
+    meow(out, when) {
+      const c = this.ctx, t0 = when != null ? when : c.currentTime;
       const dur = rand(0.78, 0.98);
       const f0 = rand(520, 600);
       const src = c.createOscillator(); src.type = 'sawtooth';
@@ -536,41 +537,42 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.26);
       src.start(t0); src.stop(t0 + dur + 0.3); vib.stop(t0 + dur + 0.3);
     },
-    /* 受惊的猫叫（被苹果砸到）：先一记闷响"咚"，再一声更高更急的"喵呜！"，比普通喵短促 */
+    /* 被苹果砸到：先一记闷响"咚"，紧接着一声委屈撒娇的"喵呜～"（哎哟~你砸到我了~） */
     meowHurt(out) {
       const c = this.ctx, t0 = c.currentTime;
-      // 被砸的闷响
       const th = c.createOscillator(); th.type = 'sine';
       th.frequency.setValueAtTime(190, t0); th.frequency.exponentialRampToValueAtTime(90, t0 + 0.12);
       const tg = c.createGain(); tg.gain.value = 0; th.connect(tg); tg.connect(out);
-      tg.gain.setValueAtTime(0.0001, t0); tg.gain.linearRampToValueAtTime(0.12, t0 + 0.005);
+      tg.gain.setValueAtTime(0.0001, t0); tg.gain.linearRampToValueAtTime(0.13, t0 + 0.005);
       tg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
       th.start(t0); th.stop(t0 + 0.2);
-      // 受惊的"喵呜！"——更高、更急，但仍是元音滑动，不是嗡鸣
-      const ts = t0 + 0.03, dur = rand(0.3, 0.4), f0 = rand(680, 770);
-      const src = c.createOscillator(); src.type = 'sawtooth';
-      src.frequency.setValueAtTime(f0 * 1.05, ts);
-      src.frequency.linearRampToValueAtTime(f0 * 1.22, ts + 0.05);   // 受惊上扬
-      src.frequency.linearRampToValueAtTime(f0 * 0.72, ts + dur);    // 急促下滑
-      const mk = (a, b, Q) => {
-        const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = Q;
-        f.frequency.setValueAtTime(a, ts); f.frequency.linearRampToValueAtTime(b, ts + dur);
-        return f;
-      };
-      const F1 = mk(520, 820, 6);
-      const F2 = mk(2300, 1150, 9);
-      const F3 = mk(3100, 2700, 8);
-      const fg = c.createGain(); fg.gain.value = 1;
-      F1.connect(fg); F2.connect(fg); F3.connect(fg);
-      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 360;
-      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4600;
-      const g = c.createGain(); g.gain.value = 0;
-      src.connect(F1); src.connect(F2); src.connect(F3);
-      fg.connect(hp); hp.connect(lp); lp.connect(g); g.connect(out);
-      g.gain.setValueAtTime(0, ts); g.gain.linearRampToValueAtTime(0.26, ts + 0.02);
-      g.gain.setValueAtTime(0.22, ts + dur * 0.5);
-      g.gain.exponentialRampToValueAtTime(0.0001, ts + dur + 0.08);
-      src.start(ts); src.stop(ts + dur + 0.12);
+      this.meow(out, t0 + 0.14);   // 砸到之后委屈地"喵呜～"
+    },
+    /* 调皮的狩猎齿颤（"咔咔咔"）：盯着猎物时那种兴奋的快速短颤——一串高音小颤，俏皮 */
+    chirp(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const n = 3 + Math.floor(Math.random() * 3);   // 3~5 个小颤
+      const base = rand(720, 870);
+      const period = rand(0.05, 0.072);
+      for (let i = 0; i < n; i++) {
+        const ts = t0 + i * period;
+        const f = base * rand(0.94, 1.1);
+        const o = c.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f * 1.12, ts);
+        o.frequency.linearRampToValueAtTime(f * 0.9, ts + 0.05);
+        // "e" 元音共振峰，短促清亮
+        const b1 = c.createBiquadFilter(); b1.type = 'bandpass'; b1.frequency.value = 680; b1.Q.value = 4;
+        const b2 = c.createBiquadFilter(); b2.type = 'bandpass'; b2.frequency.value = 2150; b2.Q.value = 6;
+        const fg = c.createGain(); b1.connect(fg); b2.connect(fg);
+        const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420;
+        const g = c.createGain(); g.gain.value = 0;
+        o.connect(b1); o.connect(b2); fg.connect(hp); hp.connect(g); g.connect(out);
+        const peak = 0.55 * (0.7 + 0.3 * Math.sin(Math.PI * (i + 0.5) / n));  // 中间几下更响
+        g.gain.setValueAtTime(0.0001, ts);
+        g.gain.linearRampToValueAtTime(peak, ts + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, ts + period * 0.78);
+        o.start(ts); o.stop(ts + 0.09);
+      }
     },
     /* 一声寒鸦（"呀——"）：开口的 /a/ 元音、稍长、尾音下滑，带一点鸦科的"哑"质感 */
     caw(out) {
@@ -2732,7 +2734,7 @@
           if (Math.abs(prey.x - c.x) < W * 0.02) {
             c.state = 'pounce';
             c.jump = 0;
-            sfx('meow');   // 扑蝴蝶的一瞬间叫一声
+            sfx('chirp');   // 扑蝴蝶时调皮地"咔咔"一串
             prey.vx = c.dir * Math.max(24, Math.abs(prey.vx)) * 2.2; // 蝴蝶受惊飞走
             prey.dur = Math.min(prey.dur, prey.life + 2.5);
             prey.scared = true;
