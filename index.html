@@ -3099,7 +3099,7 @@
         this.winterRolled = false;
         if (!this.autumnRolled && st.sp > 0.08) {
           this.autumnRolled = true;
-          this.dawSpawnT = (Math.random() < 0.30) ? t + rand(2, 8) : Infinity;
+          this.dawSpawnT = (Math.random() < 1.0) ? t + rand(2, 8) : Infinity;  // 临时100%，方便看效果
         }
         if (t >= this.dawSpawnT && !this.daw) { this.daw = this.makeEatDaw(); this.dawSpawnT = Infinity; }
       } else if (si === 3) {                   // 冬：飞过天空
