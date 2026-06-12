@@ -2458,7 +2458,7 @@
         gold = cl((sp - 0.45) / 0.30);
         leaf = 1 - cl((sp - 0.65) / 0.30);
         // 收果时偶有苹果落下（独立追踪，可能砸到树下的猫）
-        if (sp > 0.36 && sp < 0.46 && Math.random() < dt * 2.2 && this.fallApples.length < 8) {
+        if (sp > 0.36 && sp < 0.46 && Math.random() < dt * 4.5 && this.fallApples.length < 12) {
           this.fallApples.push({
             x: x + rand(-R * 0.7, R * 0.7), y: cy + rand(-R * 0.3, R * 0.4),
             vx: rand(-12, 12), vy: 10, r: R * 0.085, hit: false,
@@ -2672,10 +2672,13 @@
             else {
               c.state = 'walk';
               // 落果前后有概率把目标选在树下，正常脚步慢慢溜达过去
-              if (this.catLure > 0 && Math.random() < this.catLure)
+              if (this.catLure > 0 && Math.random() < this.catLure) {
                 c.target = this.tree0.x + rand(-this.tree0.R * 0.5, this.tree0.R * 0.5);
-              else
+                c.toTree = true;
+              } else {
                 c.target = rand(W * 0.06, W * 0.84);
+                c.toTree = false;
+              }
             }
           }
           break;
@@ -2684,7 +2687,7 @@
           c.dir = dx > 0 ? 1 : -1;
           const ws = nk > 0.5 ? spd * 1.9 : spd;   // 入夜赶着回家，脚步快些
           c.x += c.dir * ws * dt;
-          if (Math.abs(dx) < 6) { c.state = nk > 0.5 ? nightState : 'sit'; c.timer = rand(2.5, 7); }
+          if (Math.abs(dx) < 6) { c.state = nk > 0.5 ? nightState : 'sit'; c.timer = c.toTree ? rand(6, 10) : rand(2.5, 7); }
           break;
         }
         case 'chase': {
@@ -2845,7 +2848,7 @@
         ap.vy += 520 * dt;
         ap.x += ap.vx * dt; ap.y += ap.vy * dt;
         // 砸到猫头
-        if (!ap.hit && hittable && Math.abs(ap.x - headX) < 7 * u + ap.r && ap.y > headY - ap.r && ap.y < headY + 10 * u) {
+        if (!ap.hit && hittable && Math.abs(ap.x - headX) < 18 * u + ap.r && ap.y > headY - ap.r && ap.y < headY + 10 * u) {
           ap.hit = true;
           c.state = 'bonk'; c.bonk = 1.1;
           sfx('meowHurt');
@@ -2945,12 +2948,12 @@
       this.lastNk = nk;
       this.lastSi = si;
       // 落果前后（秋天 sp 0.20~0.46），猫挑目标时有概率选到树下，自然溜达过去
-      this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.25 : 0;
+      this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 1.0 : 0;
       // 入冬时掷一次骰子：约三成的冬天会有一只寒鸦，并在入冬一段时间之后才飞过
       if (si === 3) {
         if (!this.winterRolled) {
           this.winterRolled = true;
-          this.dawSpawnT = (Math.random() < 0.30) ? t + rand(10, 24) : Infinity;
+          this.dawSpawnT = (Math.random() < 0.70) ? t + rand(10, 24) : Infinity;
         }
         if (t >= this.dawSpawnT) { this.daw = this.makeDaw(); this.dawSpawnT = Infinity; }
       } else { this.winterRolled = false; this.daw = null; this.dawSpawnT = Infinity; }
