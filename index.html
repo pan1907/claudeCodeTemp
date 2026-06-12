@@ -516,6 +516,58 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.04);  // 干净收尾，无颤动
       src.start(t0); src.stop(t0 + dur + 0.08);
     },
+    /* 受惊的猫叫（被苹果砸到）：先一记闷响"咚"，再一声更高更急、下滑的"喵呜！"，与狩猎喵明显不同 */
+    meowHurt(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      // 被砸的闷响
+      const th = c.createOscillator(); th.type = 'sine';
+      th.frequency.setValueAtTime(190, t0); th.frequency.exponentialRampToValueAtTime(90, t0 + 0.12);
+      const tg = c.createGain(); tg.gain.value = 0; th.connect(tg); tg.connect(out);
+      tg.gain.setValueAtTime(0.0001, t0); tg.gain.linearRampToValueAtTime(0.12, t0 + 0.005);
+      tg.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+      th.start(t0); th.stop(t0 + 0.2);
+      // 受惊的"喵呜！"——比狩猎喵更高、更急
+      const ts = t0 + 0.04, dur = rand(0.22, 0.3), f0 = rand(880, 1010);
+      const src = c.createOscillator(); src.type = 'sawtooth';
+      src.frequency.setValueAtTime(f0 * 0.85, ts);
+      src.frequency.linearRampToValueAtTime(f0 * 1.16, ts + 0.05);
+      src.frequency.linearRampToValueAtTime(f0 * 0.7, ts + dur);     // 急促下滑
+      const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.Q.value = 4;
+      f1.frequency.setValueAtTime(1500, ts); f1.frequency.linearRampToValueAtTime(950, ts + dur);
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 520;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5600;
+      const g = c.createGain(); g.gain.value = 0;
+      src.connect(f1); f1.connect(hp); hp.connect(lp); lp.connect(g); g.connect(out);
+      g.gain.setValueAtTime(0, ts); g.gain.linearRampToValueAtTime(0.26, ts + 0.018);
+      g.gain.exponentialRampToValueAtTime(0.0001, ts + dur + 0.05);
+      src.start(ts); src.stop(ts + dur + 0.1);
+    },
+    /* 一声寒鸦（kya）：高亢短促、带噪声"哑"质感、尾音下滑——尽量贴近真实鸦科叫声 */
+    caw(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const dur = rand(0.14, 0.2);
+      const f0 = rand(1900, 2300);
+      const o = c.createOscillator(); o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f0 * 1.05, t0);
+      o.frequency.linearRampToValueAtTime(f0 * 0.82, t0 + dur);      // 尾音下滑
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 2.2;
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+      // 噪声成分带来"哑/沙"的质感
+      const ns = this.noise();
+      const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 2700; nf.Q.value = 1.0;
+      const ng = c.createGain(); ng.gain.value = 0.45;
+      const g = c.createGain(); g.gain.value = 0;
+      o.connect(bp); bp.connect(hp); hp.connect(g);
+      ns.connect(nf); nf.connect(ng); ng.connect(g); g.connect(out);
+      // 一点快速颗粒（鸦叫的"哑"），depth 不大以免发电子味
+      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = rand(110, 140);
+      const lg = c.createGain(); lg.gain.value = 0.06; lfo.connect(lg); lg.connect(g.gain); lfo.start();
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.17, t0 + 0.012);
+      g.gain.setValueAtTime(0.15, t0 + dur * 0.5);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.04);
+      o.start(t0); o.stop(t0 + dur + 0.06); lfo.stop(t0 + dur + 0.06);
+    },
     /* 一声木鱼：空心木头的"笃"——一个快速衰减的木质共鸣 + 起音的敲击声 */
     woodfish(out) {
       const c = this.ctx, t0 = c.currentTime;
@@ -2104,7 +2156,10 @@
       this.treeShake = 0;   // 摇树的余晃
       this.treeSnow = 1;    // 树上积雪量（摇掉后慢慢再积起来）
       this.snowPh = rand(0, 7);
-      this.cat = { x: W * 0.5, dir: 1, state: 'sit', timer: 3, target: W * 0.5, jump: 0 };
+      this.cat = { x: W * 0.5, dir: 1, state: 'sit', timer: 3, target: W * 0.5, jump: 0, bonk: 0 };
+      this.fallApples = [];   // 从树上掉落的苹果
+      this.daw = null;        // 冬日偶尔飞过的寒鸦
+      this.winterRolled = false;
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
       this.tree0 = {
@@ -2400,13 +2455,11 @@
         ripen = Math.min(1, 0.4 + sp / 0.38 * 0.6);
         gold = cl((sp - 0.45) / 0.30);
         leaf = 1 - cl((sp - 0.65) / 0.30);
-        // 收果时偶有苹果落下
-        if (sp > 0.36 && sp < 0.46 && Math.random() < dt * 3 && this.parts.length < 90) {
-          this.parts.push({
+        // 收果时偶有苹果落下（独立追踪，可能砸到树下的猫）
+        if (sp > 0.36 && sp < 0.46 && Math.random() < dt * 2.2 && this.fallApples.length < 8) {
+          this.fallApples.push({
             x: x + rand(-R * 0.7, R * 0.7), y: cy + rand(-R * 0.3, R * 0.4),
-            vx: rand(-4, 4), vy: 10, g: 300,
-            r: 3, phase: rand(0, 7), life: 0, dur: 1.0,
-            alpha: 0.95, c: [198, 50, 44],
+            vx: rand(-12, 12), vy: 10, r: R * 0.085, hit: false,
           });
         }
       } else {                          // 冬：光枝挂雪
@@ -2588,6 +2641,12 @@
     catStep(dt, t, nk) {
       const c = this.cat;
       const spd = Math.min(W, H) * 0.045;
+      // 被苹果砸到：愣住、缩一下，片刻后回神
+      if (c.state === 'bonk') {
+        c.bonk -= dt;
+        if (c.bonk <= 0) { c.state = 'sit'; c.timer = rand(1.5, 3); }
+        return;
+      }
       const winter = this.lastSi === 3;
       const eaveX = W * 0.875 - Math.min(W, H) * 0.137;     // 屋檐下
       const doorX = W * 0.875 + Math.min(W, H) * 0.13 * 0.20; // 屋门口
@@ -2608,7 +2667,7 @@
           if (c.timer <= 0) {
             const prey = this.flutters.find(b => Math.abs(b.x - c.x) < W * 0.30);
             if (prey && Math.random() < 0.6) { c.state = 'chase'; c.timer = 5; }
-            else { c.state = 'walk'; c.target = rand(W * 0.06, W * 0.74); }
+            else { c.state = 'walk'; c.target = rand(W * 0.06, W * 0.84); } // 偶尔会走到树下
           }
           break;
         case 'walk': {
@@ -2677,6 +2736,42 @@
         ctx.stroke();
         return;
       }
+      if (c.state === 'bonk') {
+        // 被砸到：缩成一团、耳朵向后、头上转着小星星
+        const sh = 1 + Math.sin(c.bonk * 40) * 0.04;          // 受惊的小颤
+        ctx.fillStyle = cream;
+        ctx.beginPath(); ctx.ellipse(c.x, g - 7 * u, 13 * u, 7 * u * sh, 0, 0, Math.PI * 2); ctx.fill();
+        const hx = c.x + d * 9 * u, hy = g - 13 * u;          // 头缩低
+        ctx.beginPath(); ctx.arc(hx, hy, 6 * u, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = point;                                 // 耳朵向后压
+        for (const sgn of [-1, 1]) {
+          ctx.beginPath();
+          ctx.moveTo(hx + sgn * 4 * u, hy - 3 * u);
+          ctx.lineTo(hx - d * 3 * u + sgn * 2 * u, hy - 7 * u);
+          ctx.lineTo(hx - d * 1 * u + sgn * 4.5 * u, hy - 2 * u);
+          ctx.closePath(); ctx.fill();
+        }
+        // ><  紧闭的眼
+        ctx.strokeStyle = point; ctx.lineWidth = 1.4 * u; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(hx + d * 2 * u, hy - 1.5 * u); ctx.lineTo(hx + d * 4.5 * u, hy);
+        ctx.lineTo(hx + d * 2 * u, hy + 1.5 * u);
+        ctx.stroke();
+        // 头顶打转的小星星
+        ctx.fillStyle = `rgba(255, 224, 120, ${a})`;
+        for (let k = 0; k < 3; k++) {
+          const ang = t * 6 + k * (Math.PI * 2 / 3);
+          const sx = hx + Math.cos(ang) * 8 * u, sy = hy - 9 * u + Math.sin(ang) * 2.5 * u;
+          const sr = 2.4 * u;
+          ctx.beginPath();   // 四角星
+          for (let p = 0; p < 8; p++) {
+            const pa = p / 8 * Math.PI * 2, rr = (p % 2 ? 0.4 : 1) * sr;
+            ctx.lineTo(sx + Math.cos(pa) * rr, sy + Math.sin(pa) * rr);
+          }
+          ctx.closePath(); ctx.fill();
+        }
+        return;
+      }
       const sitting = c.state === 'sit';
       const hop = c.state === 'pounce' ? Math.sin(Math.min(1, c.jump / 0.5) * Math.PI) * 16 * u : 0;
       const stretch = c.state === 'pounce' ? 1.18 : 1;
@@ -2728,6 +2823,100 @@
       }
       ctx.stroke();
     },
+    /* 掉落的苹果：受重力下落、落地或砸到猫；砸中猫则触发被砸反应 */
+    stepApples(dt) {
+      const hY = this.horizon();
+      const u = Math.min(W, H) * 0.0006;
+      const c = this.cat;
+      const hittable = c.state === 'sit' || c.state === 'walk' || c.state === 'chase';
+      const headX = c.x + (c.state === 'sit' ? 0 : c.dir * 14 * u);
+      const headY = hY + 1 - (c.state === 'sit' ? 23 : 17) * u;
+      for (let i = this.fallApples.length - 1; i >= 0; i--) {
+        const ap = this.fallApples[i];
+        ap.vy += 520 * dt;
+        ap.x += ap.vx * dt; ap.y += ap.vy * dt;
+        // 砸到猫头
+        if (!ap.hit && hittable && Math.abs(ap.x - headX) < 7 * u + ap.r && ap.y > headY - ap.r && ap.y < headY + 10 * u) {
+          ap.hit = true;
+          c.state = 'bonk'; c.bonk = 1.1;
+          sfx('meowHurt');
+          for (let k = 0; k < 4; k++) this.spawnPart(ap.x, headY, [198, 50, 44], -40, 140, rand(0.6, 1.0));
+          this.fallApples.splice(i, 1);
+          continue;
+        }
+        if (ap.y > hY + 2) { // 落地
+          for (let k = 0; k < 3; k++) this.spawnPart(ap.x, hY, [198, 60, 46], -30, 150, rand(0.5, 0.9));
+          this.fallApples.splice(i, 1);
+          continue;
+        }
+        // 画苹果
+        ctx.fillStyle = 'rgba(198,48,42,0.95)';
+        ctx.beginPath(); ctx.arc(ap.x, ap.y, ap.r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(96,70,46,0.9)'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.moveTo(ap.x, ap.y - ap.r); ctx.lineTo(ap.x + 1.5, ap.y - ap.r - 3); ctx.stroke();
+      }
+    },
+    /* 造一只飞过的寒鸦 */
+    makeDaw() {
+      const dir = Math.random() < 0.5 ? 1 : -1;
+      return {
+        dir, x: dir > 0 ? -70 : W + 70,
+        y: rand(H * 0.14, H * 0.30),
+        vx: dir * rand(70, 100), phase: rand(0, 7),
+        nextCaw: rand(1.5, 3.2), caws: 1 + (Math.random() < 0.5 ? 1 : 0),
+      };
+    },
+    /* 偏卡通的寒鸦：胖身子、大头、大眼珠、灰颈，扇动翅膀飞过 */
+    drawDaw(k, t) {
+      const u = Math.min(W, H) * 0.0014;   // 比例适中的小鸟
+      const d = k.dir;
+      const flap = Math.sin(t * 11 + k.phase);          // 扇翅
+      const yb = k.y + Math.sin(t * 1.6 + k.phase) * 6;  // 飞行起伏
+      ctx.save();
+      ctx.translate(k.x, yb);
+      ctx.scale(d, 1);
+      const body = 'rgba(46,48,54,0.96)', nape = 'rgba(120,124,134,0.96)';
+      // 尾
+      ctx.fillStyle = body;
+      ctx.beginPath();
+      ctx.moveTo(-12 * u, 0); ctx.lineTo(-22 * u, -4 * u); ctx.lineTo(-21 * u, 3 * u);
+      ctx.closePath(); ctx.fill();
+      // 胖身子
+      ctx.beginPath(); ctx.ellipse(-2 * u, 0, 13 * u, 9 * u, 0, 0, Math.PI * 2); ctx.fill();
+      // 后翅（远）
+      ctx.fillStyle = 'rgba(34,36,42,0.96)';
+      ctx.beginPath();
+      ctx.moveTo(-3 * u, -1 * u);
+      ctx.quadraticCurveTo(-12 * u, (-10 - flap * 8) * u, -22 * u, (-4 - flap * 5) * u);
+      ctx.quadraticCurveTo(-12 * u, -1 * u, -3 * u, 2 * u);
+      ctx.closePath(); ctx.fill();
+      // 大头
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.arc(11 * u, -5 * u, 8 * u, 0, Math.PI * 2); ctx.fill();
+      // 灰颈（寒鸦特征）
+      ctx.fillStyle = nape;
+      ctx.beginPath(); ctx.arc(7 * u, -3 * u, 6 * u, -0.4, 1.8); ctx.fill();
+      // 喙
+      ctx.fillStyle = 'rgba(28,28,32,0.96)';
+      ctx.beginPath();
+      ctx.moveTo(18 * u, -5 * u); ctx.lineTo(26 * u, -3.5 * u); ctx.lineTo(18 * u, -2 * u);
+      ctx.closePath(); ctx.fill();
+      // 大眼珠（卡通）
+      ctx.fillStyle = '#f4f1e8';
+      ctx.beginPath(); ctx.arc(13 * u, -6 * u, 3.4 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#1a1a20';
+      ctx.beginPath(); ctx.arc(14.2 * u, -6 * u, 1.7 * u, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.9)';
+      ctx.beginPath(); ctx.arc(14.8 * u, -6.8 * u, 0.6 * u, 0, Math.PI * 2); ctx.fill();
+      // 前翅（近，盖在身上）
+      ctx.fillStyle = body;
+      ctx.beginPath();
+      ctx.moveTo(0, -2 * u);
+      ctx.quadraticCurveTo(-8 * u, (-14 - flap * 12) * u, -18 * u, (-8 - flap * 9) * u);
+      ctx.quadraticCurveTo(-7 * u, 0, 2 * u, 1 * u);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    },
     spawnPart(x, y, c, vy0, g, dur, spread = 40) {
       if (this.parts.length > 90) this.parts.shift();
       this.parts.push({
@@ -2746,6 +2935,10 @@
       const nk = seasonNight(st.sp);
       this.lastNk = nk;
       this.lastSi = si;
+      // 入冬时掷一次骰子：约三成的冬天会有一只寒鸦飞过
+      if (si === 3) {
+        if (!this.winterRolled) { this.winterRolled = true; this.daw = (Math.random() < 0.30) ? this.makeDaw() : null; }
+      } else { this.winterRolled = false; this.daw = null; }
       const A = SEASONS[si], B = SEASONS[(si + 1) % 4];
       const hY = this.horizon();
       // 天色与土色：季节之间过渡，再压上夜色
@@ -2948,6 +3141,21 @@
       // 布偶猫
       this.catStep(dt, t, nk);
       this.drawCat(t, nk);
+
+      // 掉落的苹果（可能砸到树下的猫）
+      this.stepApples(dt);
+
+      // 冬日飞过的寒鸦
+      if (this.daw) {
+        const k = this.daw;
+        k.x += k.vx * dt;
+        if (k.caws > 0) {
+          k.nextCaw -= dt;
+          if (k.nextCaw <= 0) { k.nextCaw = rand(2.2, 4); k.caws--; sfx('caw'); }
+        }
+        this.drawDaw(k, t);
+        if (k.x < -90 || k.x > W + 90) this.daw = null;
+      }
 
       // 飘浮的颗粒（花瓣 / 谷粒 / 水滴 / 雪）
       for (let i = this.parts.length - 1; i >= 0; i--) {
