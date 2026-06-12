@@ -2203,6 +2203,9 @@
       this.eatenApples = {};  // 被吃掉的苹果：index → 啄食进度 0→1（当年秋天内保持）
       this.birdPair = null;   // 秋日飞来吃苹果的一黑一粉两只胖鸟
       this.pairSpawnT = Infinity;
+      this.kid = null;        // 夏日跑出来踢球的小朋友
+      this.kidRolled = false;
+      this.kidSpawnT = Infinity;
       this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
@@ -3114,6 +3117,102 @@
       ctx.beginPath(); ctx.arc(hx - 1 * u, hy + 2.2 * u, 1.8 * u, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     },
+    /* 夏日小球员：从屋门口跑出来 → 脚上垫几下球 → 带球从左边跑出屏幕 */
+    makeKid() {
+      const m = Math.min(W, H);
+      const doorX = W * 0.875 + m * 0.13 * 0.20;
+      const jerseys = ['rgba(206,62,62,0.96)', 'rgba(60,96,206,0.96)', 'rgba(232,200,64,0.96)', 'rgba(70,160,96,0.96)'];
+      return {
+        state: 'out', t: 0,
+        x: doorX, x0: doorX, jx: W * 0.56, outDur: 1.9,
+        spd: m * 0.085, run: 0, footRaise: 0,
+        ballX: doorX - 14, ballY: 0, ballRot: 0,
+        juggles: 3 + Math.floor(Math.random() * 3), jdone: -1,
+        jersey: jerseys[Math.floor(Math.random() * jerseys.length)],
+        ballR: m * 0.0085,
+      };
+    },
+    stepKid(dt, t) {
+      const k = this.kid, g = this.horizon() + 1, u = Math.min(W, H) * 0.0011;
+      k.t += dt;
+      if (k.state === 'out') {                 // 跑出门、到垫球点
+        const p = Math.min(1, k.t / k.outDur);
+        k.x = lerp(k.x0, k.jx, p);
+        k.run = Math.sin(t * 9);
+        k.ballX = k.x - 13 * u; k.ballY = g - k.ballR; k.ballRot -= (k.jx - k.x0) / k.outDur * dt / k.ballR;
+        this.drawKid(k, t, 'run'); this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+        if (p >= 1) { k.state = 'juggle'; k.t = 0; }
+      } else if (k.state === 'juggle') {       // 脚上垫几下球
+        const cyc = 0.6, ph = (k.t % cyc) / cyc;
+        const bounce = Math.sin(Math.PI * ph);            // 0 在脚面、1 在最高
+        k.footRaise = Math.max(0, Math.cos(Math.PI * ph)); // 触球瞬间脚抬起
+        k.ballX = k.x - 9 * u;
+        k.ballY = g - 12 * u - bounce * 32 * u;
+        k.ballRot += dt * 6;
+        const jd = Math.floor(k.t / cyc);
+        if (jd > k.jdone) { k.jdone = jd; }
+        this.drawKid(k, t, 'juggle'); this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+        if (jd >= k.juggles) { k.state = 'dribble'; k.t = 0; }
+      } else {                                 // 带球从左边跑出去
+        k.x -= k.spd * dt;
+        k.run = Math.sin(t * 11);
+        k.ballX = k.x - 16 * u; k.ballY = g - k.ballR; k.ballRot -= k.spd * dt / k.ballR;
+        this.drawKid(k, t, 'run'); this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
+        if (k.x < -40) this.kid = null;
+      }
+    },
+    drawBall(x, y, r, rot) {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+      ctx.fillStyle = 'rgba(248,248,250,0.98)';
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(38,40,48,0.92)';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2); ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        const a = i / 5 * Math.PI * 2;
+        ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62, r * 0.15, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(0,0,0,0.14)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    },
+    /* 小小球员：圆头+发、球衣身子、细胳膊腿；面朝左（跑动方向） */
+    drawKid(k, t, pose) {
+      const u = Math.min(W, H) * 0.0011, g = this.horizon() + 1;
+      ctx.save();
+      ctx.translate(k.x, g);
+      ctx.scale(-1, 1);   // 朝左
+      const skin = 'rgba(247,212,180,0.97)', limb = 'rgba(60,52,46,0.92)';
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      // 腿
+      ctx.strokeStyle = limb; ctx.lineWidth = 3 * u;
+      if (pose === 'juggle') {
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();           // 支撑腿
+        const fr = k.footRaise || 0;
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.quadraticCurveTo(7 * u, -12 * u, 9 * u, (-9 - fr * 4) * u); ctx.stroke(); // 垫球腿
+      } else {
+        const s = (k.run || 0) * 5;
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -16 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
+      }
+      // 身子（球衣）
+      ctx.strokeStyle = k.jersey; ctx.lineWidth = 7 * u;
+      ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(1 * u, -30 * u); ctx.stroke();
+      // 胳膊
+      ctx.strokeStyle = skin; ctx.lineWidth = 2.4 * u;
+      const sw = (k.run || 0) * 4;
+      if (pose === 'juggle') {
+        ctx.beginPath(); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(-6 * u, -22 * u); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(7 * u, -23 * u); ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(sw * u, -21 * u); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(-sw * u, -21 * u); ctx.stroke();
+      }
+      // 头
+      ctx.fillStyle = skin;
+      ctx.beginPath(); ctx.arc(1.5 * u, -36 * u, 5.5 * u, 0, Math.PI * 2); ctx.fill();
+      // 头发
+      ctx.fillStyle = 'rgba(58,42,32,0.96)';
+      ctx.beginPath(); ctx.arc(1.5 * u, -37.5 * u, 5.6 * u, Math.PI * 1.02, Math.PI * 2.05); ctx.fill();
+      ctx.beginPath(); ctx.arc(6 * u, -37 * u, 2 * u, Math.PI * 1.2, Math.PI * 2.2); ctx.fill();
+      ctx.restore();
+    },
     /* 偏卡通的寒鸦：胖身子、大头、大眼珠、灰颈，扇动翅膀飞过 */
     drawDaw(k, t) {
       const u = Math.min(W, H) * 0.00102;  // 小一些的远空小鸟
@@ -3202,6 +3301,14 @@
         }
         if (t >= this.dawSpawnT && !this.daw) { this.daw = this.makeDaw(); this.dawSpawnT = Infinity; }
       } else { this.winterRolled = false; this.autumnRolled = false; this.daw = null; this.dawSpawnT = Infinity; }
+      // 夏天：小朋友从屋里跑出来踢球
+      if (si === 1) {
+        if (!this.kidRolled && st.sp > 0.10 && st.sp < 0.55) {
+          this.kidRolled = true;
+          this.kidSpawnT = (Math.random() < 1.0) ? t + rand(1, 4) : Infinity;  // 临时100%，方便看效果
+        }
+        if (t >= this.kidSpawnT && !this.kid) { this.kid = this.makeKid(); this.kidSpawnT = Infinity; }
+      } else { this.kidRolled = false; this.kid = null; }
       const A = SEASONS[si], B = SEASONS[(si + 1) % 4];
       const hY = this.horizon();
       // 天色与土色：季节之间过渡，再压上夜色
@@ -3407,6 +3514,9 @@
 
       // 掉落的苹果（可能砸到树下的猫）
       this.stepApples(dt);
+
+      // 夏天踢球的小朋友
+      if (this.kid) this.stepKid(dt, t);
 
       // 秋天的两只胖鸟（吃苹果）
       if (this.birdPair) {
