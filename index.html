@@ -491,39 +491,50 @@
       doCroak(t0);
       if (Math.random() < 0.6) doCroak(t0 + rand(0.34, 0.5));  // "呱…呱"
     },
-    /* 一声猫叫（"喵～"）：拱形音高（张口最大时最高）+ 双元音共振峰滑动 ee→ow，带鼻音起音 */
+    /* 一声撒娇猫叫（"喵呜～"）：拱形音高+起音上扬、ee→ow→闭口"oo"、尾部加深的柔和颤音、长长的拖尾 */
     meow(out) {
       const c = this.ctx, t0 = c.currentTime;
-      const dur = rand(0.5, 0.66);
-      const f0 = rand(540, 620);
+      const dur = rand(0.78, 0.98);
+      const f0 = rand(520, 600);
       const src = c.createOscillator(); src.type = 'sawtooth';
-      // 拱形音高：升到张口最大处再回落
-      src.frequency.setValueAtTime(f0 * 0.92, t0);
-      src.frequency.linearRampToValueAtTime(f0 * 1.12, t0 + dur * 0.32);
-      src.frequency.linearRampToValueAtTime(f0 * 0.8, t0 + dur);
-      // 三个共振峰，做 "ee→ow" 的滑动（喵的关键）：F1 随张口上升、F2 由前往后下滑
-      const mk = (a, b, Q) => {
+      // 起音微微上扬（撒娇的问句感）→ 回落 → 尾巴继续下滑"呜～"
+      src.frequency.setValueAtTime(f0 * 0.95, t0);
+      src.frequency.linearRampToValueAtTime(f0 * 1.18, t0 + dur * 0.28);
+      src.frequency.linearRampToValueAtTime(f0 * 0.80, t0 + dur * 0.75);
+      src.frequency.linearRampToValueAtTime(f0 * 0.70, t0 + dur);
+      // 柔和的颤音（5~6Hz），尾部加深 → 哼唧/撒娇的味道
+      const vib = c.createOscillator(); vib.type = 'sine'; vib.frequency.value = rand(5, 6.5);
+      const vibG = c.createGain();
+      vibG.gain.setValueAtTime(0, t0);
+      vibG.gain.linearRampToValueAtTime(f0 * 0.018, t0 + dur * 0.5);
+      vibG.gain.linearRampToValueAtTime(f0 * 0.035, t0 + dur);
+      vib.connect(vibG); vibG.connect(src.frequency); vib.start(t0);
+      // 三共振峰：me(ee) → ow（张口）→ 闭口"oo/呜"（F1、F2 一起收回）
+      const mk = (a, b, e, Q) => {
         const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = Q;
-        f.frequency.setValueAtTime(a, t0); f.frequency.linearRampToValueAtTime(b, t0 + dur);
+        f.frequency.setValueAtTime(a, t0);
+        f.frequency.linearRampToValueAtTime(b, t0 + dur * 0.6);
+        f.frequency.linearRampToValueAtTime(e, t0 + dur);
         return f;
       };
-      const F1 = mk(430, 760, 6);
-      const F2 = mk(2250, 1020, 9);
-      const F3 = mk(3000, 2500, 8);
+      const F1 = mk(430, 770, 470, 6);
+      const F2 = mk(2200, 1000, 780, 9);
+      const F3 = mk(3000, 2500, 2300, 8);
       const fg = c.createGain(); fg.gain.value = 1;
       F1.connect(fg); F2.connect(fg); F3.connect(fg);
-      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 330; // 去低频"放屁感"
-      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4200;
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 320;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 4000;
       const g = c.createGain(); g.gain.value = 0;
       src.connect(F1); src.connect(F2); src.connect(F3);
       fg.connect(hp); hp.connect(lp); lp.connect(g); g.connect(out);
-      // 鼻音起音"m"（轻）→ 张口"eow"（强）→ 缓落
+      // 鼻音起音 → 张口"喵" → 渐弱但不断的撒娇拖尾"呜～"
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.07, t0 + 0.03);
-      g.gain.linearRampToValueAtTime(0.24, t0 + dur * 0.26);
-      g.gain.setValueAtTime(0.22, t0 + dur * 0.6);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.1);
-      src.start(t0); src.stop(t0 + dur + 0.14);
+      g.gain.linearRampToValueAtTime(0.07, t0 + 0.04);
+      g.gain.linearRampToValueAtTime(0.22, t0 + dur * 0.28);
+      g.gain.setValueAtTime(0.20, t0 + dur * 0.55);
+      g.gain.linearRampToValueAtTime(0.11, t0 + dur * 0.86);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.26);
+      src.start(t0); src.stop(t0 + dur + 0.3); vib.stop(t0 + dur + 0.3);
     },
     /* 受惊的猫叫（被苹果砸到）：先一记闷响"咚"，再一声更高更急的"喵呜！"，比普通喵短促 */
     meowHurt(out) {
