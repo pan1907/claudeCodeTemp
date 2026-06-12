@@ -3067,12 +3067,12 @@
     },
     /* 胖乎乎的可爱小鸟：圆团身子、大眼睛、小喙、小翅膀；color 'black' 或 'pink' */
     drawCuteBird(k, t, pose) {
-      const u = Math.min(W, H) * 0.0013;
+      const dark = k.color === 'black';
+      const u = Math.min(W, H) * 0.0013 * (dark ? 1.05 : 1);  // 黑鸟略放大，抵消亮色显大的错觉
       const d = pose === 'fly' ? k.dir : k.faceDir;
       const peck = pose === 'peck' ? k.peck : 0;
       const flap = Math.sin(t * 12 + k.phase);
       const yb = pose === 'fly' ? k.y + Math.sin(t * 1.6 + k.phase) * 5 : k.y;
-      const dark = k.color === 'black';
       const body = dark ? 'rgba(58,58,66,0.97)' : 'rgba(244,148,178,0.97)';
       const belly = dark ? 'rgba(98,98,108,0.97)' : 'rgba(255,210,224,0.97)';
       const wing = dark ? 'rgba(40,40,48,0.97)' : 'rgba(226,116,156,0.97)';
