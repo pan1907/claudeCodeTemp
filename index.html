@@ -542,31 +542,31 @@
       g.gain.exponentialRampToValueAtTime(0.0001, ts + dur + 0.05);
       src.start(ts); src.stop(ts + dur + 0.1);
     },
-    /* 一声寒鸦（kya）：高亢短促、带噪声"哑"质感、尾音下滑——尽量贴近真实鸦科叫声 */
+    /* 一声寒鸦（"呀——"）：开口的 /a/ 元音、稍长、尾音下滑，带一点鸦科的"哑"质感 */
     caw(out) {
       const c = this.ctx, t0 = c.currentTime;
-      const dur = rand(0.14, 0.2);
-      const f0 = rand(1900, 2300);
+      const dur = rand(0.32, 0.44);
+      const f0 = rand(620, 760);
       const o = c.createOscillator(); o.type = 'sawtooth';
-      o.frequency.setValueAtTime(f0 * 1.05, t0);
-      o.frequency.linearRampToValueAtTime(f0 * 0.82, t0 + dur);      // 尾音下滑
-      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 2.2;
-      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
-      // 噪声成分带来"哑/沙"的质感
+      o.frequency.setValueAtTime(f0 * 1.12, t0);
+      o.frequency.linearRampToValueAtTime(f0 * 0.76, t0 + dur);      // 拉长的下滑"呀——"
+      // /a/ 元音的两个共振峰（开口"呀"）
+      const f1 = c.createBiquadFilter(); f1.type = 'bandpass'; f1.frequency.value = 950; f1.Q.value = 3;
+      const f2 = c.createBiquadFilter(); f2.type = 'bandpass'; f2.frequency.value = 1500; f2.Q.value = 4;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3200;
+      // 少量噪声带来"哑/沙"，但不盖过元音
       const ns = this.noise();
-      const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 2700; nf.Q.value = 1.0;
-      const ng = c.createGain(); ng.gain.value = 0.45;
+      const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1800; nf.Q.value = 0.9;
+      const ng = c.createGain(); ng.gain.value = 0.22;
       const g = c.createGain(); g.gain.value = 0;
-      o.connect(bp); bp.connect(hp); hp.connect(g);
+      o.connect(f1); o.connect(f2); f1.connect(lp); f2.connect(lp); lp.connect(g);
       ns.connect(nf); nf.connect(ng); ng.connect(g); g.connect(out);
-      // 一点快速颗粒（鸦叫的"哑"），depth 不大以免发电子味
-      const lfo = c.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = rand(110, 140);
-      const lg = c.createGain(); lg.gain.value = 0.06; lfo.connect(lg); lg.connect(g.gain); lfo.start();
+      // 起音略快、保持、缓落（拉长尾巴）
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.17, t0 + 0.012);
-      g.gain.setValueAtTime(0.15, t0 + dur * 0.5);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.04);
-      o.start(t0); o.stop(t0 + dur + 0.06); lfo.stop(t0 + dur + 0.06);
+      g.gain.linearRampToValueAtTime(0.18, t0 + 0.03);
+      g.gain.setValueAtTime(0.16, t0 + dur * 0.55);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.08);
+      o.start(t0); o.stop(t0 + dur + 0.12);
     },
     /* 一声木鱼：空心木头的"笃"——一个快速衰减的木质共鸣 + 起音的敲击声 */
     woodfish(out) {
@@ -2160,6 +2160,7 @@
       this.fallApples = [];   // 从树上掉落的苹果
       this.daw = null;        // 冬日偶尔飞过的寒鸦
       this.winterRolled = false;
+      this.dawSpawnT = Infinity;
       this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
@@ -2870,13 +2871,13 @@
       return {
         dir, x: dir > 0 ? -70 : W + 70,
         y: rand(H * 0.14, H * 0.30),
-        vx: dir * rand(70, 100), phase: rand(0, 7),
-        nextCaw: rand(1.5, 3.2), caws: 1 + (Math.random() < 0.5 ? 1 : 0),
+        vx: dir * rand(40, 58), phase: rand(0, 7),
+        nextCaw: rand(1.8, 3.6), caws: 1 + (Math.random() < 0.5 ? 1 : 0),
       };
     },
     /* 偏卡通的寒鸦：胖身子、大头、大眼珠、灰颈，扇动翅膀飞过 */
     drawDaw(k, t) {
-      const u = Math.min(W, H) * 0.0014;   // 比例适中的小鸟
+      const u = Math.min(W, H) * 0.00102;  // 小一些的远空小鸟
       const d = k.dir;
       const flap = Math.sin(t * 11 + k.phase);          // 扇翅
       const yb = k.y + Math.sin(t * 1.6 + k.phase) * 6;  // 飞行起伏
@@ -2945,10 +2946,14 @@
       this.lastSi = si;
       // 落果前后（秋天 sp 0.20~0.46），猫挑目标时有概率选到树下，自然溜达过去
       this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.25 : 0;
-      // 入冬时掷一次骰子：约三成的冬天会有一只寒鸦飞过
+      // 入冬时掷一次骰子：约三成的冬天会有一只寒鸦，并在入冬一段时间之后才飞过
       if (si === 3) {
-        if (!this.winterRolled) { this.winterRolled = true; this.daw = (Math.random() < 0.30) ? this.makeDaw() : null; }
-      } else { this.winterRolled = false; this.daw = null; }
+        if (!this.winterRolled) {
+          this.winterRolled = true;
+          this.dawSpawnT = (Math.random() < 0.30) ? t + rand(10, 24) : Infinity;
+        }
+        if (t >= this.dawSpawnT) { this.daw = this.makeDaw(); this.dawSpawnT = Infinity; }
+      } else { this.winterRolled = false; this.daw = null; this.dawSpawnT = Infinity; }
       const A = SEASONS[si], B = SEASONS[(si + 1) % 4];
       const hY = this.horizon();
       // 天色与土色：季节之间过渡，再压上夜色
