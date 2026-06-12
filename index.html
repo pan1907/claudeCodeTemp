@@ -548,35 +548,37 @@
       th.start(t0); th.stop(t0 + 0.2);
       this.meow(out, t0 + 0.14);   // 砸到之后委屈地"喵呜～"
     },
-    /* 调皮的颤鸣（"呼噜噜~?"）：猫打招呼/兴奋时那种闭口、上扬、带颤舌"rrr"的短促 chirrup */
-    chirp(out) {
+    /* 短促清脆的小奶喵（"喵!"）：高音、快起快落、ee→a 快速元音滑动——一听就是猫，俏皮 */
+    mew(out) {
       const c = this.ctx, t0 = c.currentTime;
-      const dur = rand(0.28, 0.4);
-      const f0 = rand(480, 580);
+      const dur = rand(0.16, 0.24);
+      const f0 = rand(820, 980);     // 小奶猫，偏高
       const src = c.createOscillator(); src.type = 'sawtooth';
-      // 末尾上扬的问句感
-      src.frequency.setValueAtTime(f0 * 0.96, t0);
-      src.frequency.linearRampToValueAtTime(f0 * 1.0, t0 + dur * 0.4);
-      src.frequency.linearRampToValueAtTime(f0 * 1.30, t0 + dur);
-      // 闭口的低共振峰（trill 基本是闭着嘴发的，更"哼/噜"）
-      const F1 = c.createBiquadFilter(); F1.type = 'bandpass'; F1.frequency.value = 430; F1.Q.value = 5;
-      const F2 = c.createBiquadFilter(); F2.type = 'bandpass'; F2.frequency.value = 1500; F2.Q.value = 7;
-      const fg = c.createGain(); F1.connect(fg); F2.connect(fg);
-      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 280;
-      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+      // 快速拱形："mya!" 起音上扬、迅速回落
+      src.frequency.setValueAtTime(f0 * 0.95, t0);
+      src.frequency.linearRampToValueAtTime(f0 * 1.18, t0 + dur * 0.35);
+      src.frequency.linearRampToValueAtTime(f0 * 0.86, t0 + dur);
+      // ee→a 的快速元音滑动（小猫共振峰偏高）
+      const mk = (a, b, Q) => {
+        const f = c.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = Q;
+        f.frequency.setValueAtTime(a, t0); f.frequency.linearRampToValueAtTime(b, t0 + dur);
+        return f;
+      };
+      const F1 = mk(560, 950, 6);
+      const F2 = mk(2500, 1500, 8);
+      const F3 = mk(3400, 2900, 7);
+      const fg = c.createGain(); F1.connect(fg); F2.connect(fg); F3.connect(fg);
+      const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 420;
+      const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5600;
       const g = c.createGain(); g.gain.value = 0;
-      src.connect(F1); src.connect(F2); fg.connect(hp); hp.connect(lp); lp.connect(g); g.connect(out);
-      // 整体软起软落
+      src.connect(F1); src.connect(F2); src.connect(F3);
+      fg.connect(hp); hp.connect(lp); lp.connect(g); g.connect(out);
+      // 脆：快起、不留长尾
       g.gain.setValueAtTime(0, t0);
-      g.gain.linearRampToValueAtTime(0.2, t0 + 0.03);
-      g.gain.setValueAtTime(0.18, t0 + dur * 0.6);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.06);
-      // 颤舌"rrr"：~30Hz 平滑振幅脉动（正弦，不是方波，避免电子蜂鸣味）
-      const tr = c.createOscillator(); tr.type = 'sine';
-      tr.frequency.setValueAtTime(27, t0); tr.frequency.linearRampToValueAtTime(34, t0 + dur);
-      const trG = c.createGain(); trG.gain.value = 0.11;
-      tr.connect(trG); trG.connect(g.gain); tr.start(t0);
-      src.start(t0); src.stop(t0 + dur + 0.1); tr.stop(t0 + dur + 0.1);
+      g.gain.linearRampToValueAtTime(0.27, t0 + 0.02);
+      g.gain.setValueAtTime(0.22, t0 + dur * 0.5);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.05);
+      src.start(t0); src.stop(t0 + dur + 0.08);
     },
     /* 一声寒鸦（"呀——"）：开口的 /a/ 元音、稍长、尾音下滑，带一点鸦科的"哑"质感 */
     caw(out) {
@@ -2738,7 +2740,7 @@
           if (Math.abs(prey.x - c.x) < W * 0.02) {
             c.state = 'pounce';
             c.jump = 0;
-            sfx('chirp');   // 扑蝴蝶时调皮地"咔咔"一串
+            sfx('mew');   // 扑蝴蝶时清脆地"喵!"一声
             prey.vx = c.dir * Math.max(24, Math.abs(prey.vx)) * 2.2; // 蝴蝶受惊飞走
             prey.dur = Math.min(prey.dur, prey.life + 2.5);
             prey.scared = true;
