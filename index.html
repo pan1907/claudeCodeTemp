@@ -2160,6 +2160,7 @@
       this.fallApples = [];   // 从树上掉落的苹果
       this.daw = null;        // 冬日偶尔飞过的寒鸦
       this.winterRolled = false;
+      this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
       this.tree0 = {
@@ -2667,7 +2668,14 @@
           if (c.timer <= 0) {
             const prey = this.flutters.find(b => Math.abs(b.x - c.x) < W * 0.30);
             if (prey && Math.random() < 0.6) { c.state = 'chase'; c.timer = 5; }
-            else { c.state = 'walk'; c.target = rand(W * 0.06, W * 0.84); } // 偶尔会走到树下
+            else {
+              c.state = 'walk';
+              // 落果前后有概率把目标选在树下，正常脚步慢慢溜达过去
+              if (this.catLure > 0 && Math.random() < this.catLure)
+                c.target = this.tree0.x + rand(-this.tree0.R * 0.5, this.tree0.R * 0.5);
+              else
+                c.target = rand(W * 0.06, W * 0.84);
+            }
           }
           break;
         case 'walk': {
@@ -2935,6 +2943,8 @@
       const nk = seasonNight(st.sp);
       this.lastNk = nk;
       this.lastSi = si;
+      // 落果前后（秋天 sp 0.20~0.46），猫挑目标时有概率选到树下，自然溜达过去
+      this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.25 : 0;
       // 入冬时掷一次骰子：约三成的冬天会有一只寒鸦飞过
       if (si === 3) {
         if (!this.winterRolled) { this.winterRolled = true; this.daw = (Math.random() < 0.30) ? this.makeDaw() : null; }
