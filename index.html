@@ -3117,37 +3117,51 @@
       ctx.beginPath(); ctx.arc(hx - 1 * u, hy + 2.2 * u, 1.8 * u, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     },
-    /* 夏日小球员：从屋门口跑出来 → 脚上垫几下球 → 带球从左边跑出屏幕 */
+    /* 夏日小球员：走出门 → 垫球 → 带球短跑 → 蓄力一脚踢飞 → 腾空 → SIU 定格 → 跑出屏幕 */
     makeKid() {
       const m = Math.min(W, H);
       const doorX = W * 0.875 + m * 0.13 * 0.20;
-      const jerseys = ['rgba(206,62,62,0.96)', 'rgba(60,96,206,0.96)', 'rgba(232,200,64,0.96)', 'rgba(70,160,96,0.96)'];
+      // 随机一件国家球衣（主色 + 短裤色）
+      const kits = [
+        { jersey: 'rgba(182,38,44,0.97)', shorts: 'rgba(40,70,52,0.95)' },   // 葡萄牙
+        { jersey: 'rgba(245,212,44,0.97)', shorts: 'rgba(60,120,80,0.95)' },  // 巴西
+        { jersey: 'rgba(116,182,226,0.97)', shorts: 'rgba(40,52,90,0.95)' },  // 阿根廷
+        { jersey: 'rgba(40,72,160,0.97)', shorts: 'rgba(235,235,240,0.95)' }, // 法国
+        { jersey: 'rgba(206,46,46,0.97)', shorts: 'rgba(40,52,90,0.95)' },    // 西班牙
+        { jersey: 'rgba(242,132,40,0.97)', shorts: 'rgba(40,44,52,0.95)' },   // 荷兰
+        { jersey: 'rgba(236,238,242,0.97)', shorts: 'rgba(40,44,52,0.95)' },  // 德国 / 英格兰
+        { jersey: 'rgba(70,160,96,0.97)', shorts: 'rgba(236,238,242,0.95)' }, // 其它
+      ];
+      const kit = kits[Math.floor(Math.random() * kits.length)];
       return {
         state: 'out', t: 0,
-        x: doorX, x0: doorX, jx: W * 0.56, outDur: 1.7,
-        dribbleX: W * 0.40, dribDur: 1.5,          // 带球到左半部分（不太靠边）
+        x: doorX, x0: doorX, jx: W * 0.56, outDur: 2.6,    // 走出来（慢一些）
+        dribbleX: W * 0.40, dribDur: 1.5,                  // 带球到左半部分（不太靠边）
         spd: m * 0.085, run: 0, footRaise: 0,
         ballX: doorX - 14, ballY: 0, ballRot: 0,
         juggles: 3 + Math.floor(Math.random() * 3), jdone: -1,
-        jersey: jerseys[Math.floor(Math.random() * jerseys.length)],
+        jersey: kit.jersey, shorts: kit.shorts,
         ballR: m * 0.0085,
       };
     },
     stepKid(dt, t) {
       const k = this.kid, g = this.horizon() + 1, u = Math.min(W, H) * 0.0011, m = Math.min(W, H);
       k.t += dt;
-      // 被踢飞的球：一直更新到出屏
+      // 被踢飞的球：划弧 + 落地反弹，直到飞出左边
       if (k.ballFlying) {
-        k.ballX += k.ballVX * dt; k.ballY += k.ballVY * dt; k.ballVY += m * 0.9 * dt; k.ballRot -= dt * 17;
+        k.ballX += k.ballVX * dt; k.ballY += k.ballVY * dt; k.ballVY += m * 0.95 * dt; k.ballRot -= k.ballVX * dt / k.ballR;
+        if (k.ballY > g - k.ballR && k.ballVY > 0) {     // 触地反弹
+          k.ballY = g - k.ballR; k.ballVY = -k.ballVY * 0.62; k.ballVX *= 0.84;
+        }
         this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
-        if (k.ballX < -50 || k.ballY > g + 30 || k.ballY < -80) k.ballFlying = false;
+        if (k.ballX < -50) k.ballFlying = false;
       }
-      if (k.state === 'out') {                 // 跑出门、到垫球点
+      if (k.state === 'out') {                 // 走出门、到垫球点
         const p = Math.min(1, k.t / k.outDur);
         k.x = lerp(k.x0, k.jx, p);
-        k.run = Math.sin(t * 9);
+        k.run = Math.sin(t * 5.2);             // 走路：步频慢
         k.ballX = k.x - 13 * u; k.ballY = g - k.ballR; k.ballRot -= (k.jx - k.x0) / k.outDur * dt / k.ballR;
-        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'run');
+        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'walk');
         if (p >= 1) { k.state = 'juggle'; k.t = 0; }
       } else if (k.state === 'juggle') {       // 脚上垫几下球
         const cyc = 0.6, ph = (k.t % cyc) / cyc;
@@ -3172,7 +3186,7 @@
           if (k.t > 0.12) {                    // 触球瞬间，球飞出
             k.kicked = true; k.ballFlying = true;
             k.ballX = k.x - 12 * u; k.ballY = g - 11 * u;
-            k.ballVX = -m * 0.62; k.ballVY = -m * 0.42;
+            k.ballVX = -m * 0.46; k.ballVY = -m * 0.52;   // 高一点的弧线，落地弹一两下再出屏
           } else {
             k.ballX = k.x - 11 * u; k.ballY = g - k.ballR;
             this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
@@ -3223,34 +3237,47 @@
       ctx.save();
       ctx.translate(k.x, g);
       ctx.scale(-1, 1);   // 朝左
-      const skin = 'rgba(247,212,180,0.97)', limb = 'rgba(60,52,46,0.92)';
+      const skin = 'rgba(247,212,180,0.97)';
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      // 腿
-      ctx.strokeStyle = limb; ctx.lineWidth = 3 * u;
+      // 腿（裸腿肤色）
+      ctx.strokeStyle = skin; ctx.lineWidth = 2.8 * u;
       if (pose === 'juggle') {
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();           // 支撑腿
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();             // 支撑腿
         const fr = k.footRaise || 0;
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.quadraticCurveTo(7 * u, -12 * u, 9 * u, (-9 - fr * 4) * u); ctx.stroke(); // 垫球腿
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.quadraticCurveTo(7 * u, -12 * u, 9 * u, (-9 - fr * 4) * u); ctx.stroke(); // 垫球腿
       } else if (pose === 'kick') {
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();            // 支撑腿
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(12 * u, -4 * u); ctx.stroke();        // 抬起踢出的腿
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();             // 支撑腿
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(12 * u, -4 * u); ctx.stroke();          // 抬起踢出的腿
       } else if (pose === 'winddup') {
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(2 * u, 0); ctx.stroke();              // 支撑腿
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-9 * u, -3 * u); ctx.stroke();        // 踢腿向后拉（蓄力）
-      } else {
-        const s = (k.run || 0) * 5;
-        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -16 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(2 * u, 0); ctx.stroke();               // 支撑腿
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(-9 * u, -3 * u); ctx.stroke();          // 踢腿向后拉（蓄力）
+      } else {                                  // walk / run
+        const amp = pose === 'walk' ? 3.4 : 5.4;
+        const s = (k.run || 0) * amp;
+        ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -15 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
       }
+      // 短裤（球衣同款国家色）
+      ctx.fillStyle = k.shorts || 'rgba(60,52,46,0.92)';
+      ctx.beginPath();
+      ctx.moveTo(-4.5 * u, -18 * u); ctx.lineTo(4.5 * u, -18 * u); ctx.lineTo(5 * u, -12 * u);
+      ctx.lineTo(0.5 * u, -13.5 * u); ctx.lineTo(-5 * u, -12 * u); ctx.closePath(); ctx.fill();
       // 身子（球衣）
-      ctx.strokeStyle = k.jersey; ctx.lineWidth = 7 * u;
-      ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(1 * u, -30 * u); ctx.stroke();
-      // 胳膊
+      ctx.strokeStyle = k.jersey; ctx.lineWidth = 7.5 * u;
+      ctx.beginPath(); ctx.moveTo(0, -17 * u); ctx.lineTo(1 * u, -30 * u); ctx.stroke();
+      // 胳膊（自然下垂、随步伐前后摆）
       ctx.strokeStyle = skin; ctx.lineWidth = 2.4 * u;
-      const sw = (k.run || 0) * 4;
-      if (pose === 'juggle') {
-        ctx.beginPath(); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(-6 * u, -22 * u); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(7 * u, -23 * u); ctx.stroke();
+      if (pose === 'juggle' || pose === 'winddup' || pose === 'kick') {
+        ctx.beginPath();
+        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(-7 * u, -24 * u, -9 * u, -19 * u);
+        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(7 * u, -24 * u, 9 * u, -20 * u);
+        ctx.stroke();
       } else {
-        ctx.beginPath(); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(sw * u, -21 * u); ctx.moveTo(0.5 * u, -27 * u); ctx.lineTo(-sw * u, -21 * u); ctx.stroke();
+        const amp = pose === 'walk' ? 2.6 : 4.6;
+        const sw = (k.run || 0) * amp;
+        ctx.beginPath();
+        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(sw * 0.6 * u, -23 * u, sw * u, -17 * u);
+        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(-sw * 0.6 * u, -23 * u, -sw * u, -17 * u);
+        ctx.stroke();
       }
       // 头
       ctx.fillStyle = skin;
@@ -3264,13 +3291,13 @@
     /* 正面的小球员：用于腾空转身与 SIU 定格（叉腿、双臂下张、仰头张嘴） */
     drawKidFront(k, t, o) {
       const u = Math.min(W, H) * 0.0011, g = this.horizon() + 1;
-      const skin = 'rgba(247,212,180,0.97)', limb = 'rgba(60,52,46,0.92)';
+      const skin = 'rgba(247,212,180,0.97)';
       ctx.save();
       ctx.translate(k.x, g + (o.yOff || 0));
       ctx.scale(o.squashX != null ? o.squashX : 1, 1);
       ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-      // 腿
-      ctx.strokeStyle = limb; ctx.lineWidth = 3 * u;
+      // 腿（裸腿肤色）
+      ctx.strokeStyle = skin; ctx.lineWidth = 3 * u;
       if (o.air) {                              // 腾空：收腿
         ctx.beginPath(); ctx.moveTo(-2 * u, -16 * u); ctx.lineTo(-5 * u, -7 * u);
         ctx.moveTo(2 * u, -16 * u); ctx.lineTo(5 * u, -7 * u); ctx.stroke();
@@ -3279,6 +3306,11 @@
         ctx.beginPath(); ctx.moveTo(-1.5 * u, -16 * u); ctx.lineTo(-fx, 0);
         ctx.moveTo(1.5 * u, -16 * u); ctx.lineTo(fx, 0); ctx.stroke();
       }
+      // 短裤（国家色）
+      ctx.fillStyle = k.shorts || 'rgba(60,52,46,0.92)';
+      ctx.beginPath();
+      ctx.moveTo(-5 * u, -19 * u); ctx.lineTo(5 * u, -19 * u); ctx.lineTo(5.5 * u, -13 * u);
+      ctx.lineTo(0, -14.5 * u); ctx.lineTo(-5.5 * u, -13 * u); ctx.closePath(); ctx.fill();
       // 身子（球衣）
       ctx.strokeStyle = k.jersey; ctx.lineWidth = 8 * u;
       ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(0, -30 * u); ctx.stroke();
