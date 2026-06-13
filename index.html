@@ -3124,13 +3124,13 @@
       // 随机一件国家球衣（主色 + 短裤色）
       const kits = [
         { jersey: 'rgba(182,38,44,0.97)', shorts: 'rgba(40,70,52,0.95)' },   // 葡萄牙
-        { jersey: 'rgba(245,212,44,0.97)', shorts: 'rgba(60,120,80,0.95)' },  // 巴西
-        { jersey: 'rgba(116,182,226,0.97)', shorts: 'rgba(40,52,90,0.95)' },  // 阿根廷
         { jersey: 'rgba(40,72,160,0.97)', shorts: 'rgba(235,235,240,0.95)' }, // 法国
         { jersey: 'rgba(206,46,46,0.97)', shorts: 'rgba(40,52,90,0.95)' },    // 西班牙
         { jersey: 'rgba(242,132,40,0.97)', shorts: 'rgba(40,44,52,0.95)' },   // 荷兰
         { jersey: 'rgba(236,238,242,0.97)', shorts: 'rgba(40,44,52,0.95)' },  // 德国 / 英格兰
         { jersey: 'rgba(70,160,96,0.97)', shorts: 'rgba(236,238,242,0.95)' }, // 其它
+        { jersey: 'rgba(222,32,40,0.97)', shorts: 'rgba(235,235,240,0.95)' }, // 中国（红衣白裤）
+        { jersey: 'rgba(30,72,182,0.97)', shorts: 'rgba(30,72,182,0.95)' },   // 切尔西（全蓝）
       ];
       const kit = kits[Math.floor(Math.random() * kits.length)];
       return {
@@ -3217,18 +3217,46 @@
         if (k.x < -40) this.kid = null;
       }
     },
+    /* 2026 世界杯官方比赛球「Trionda」风格：白底、四片波浪панель、中心三色（红蓝绿）三角徽记 */
     drawBall(x, y, r, rot) {
+      const TAU = Math.PI * 2;
       ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
-      ctx.fillStyle = 'rgba(248,248,250,0.98)';
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = 'rgba(38,40,48,0.92)';
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.32, 0, Math.PI * 2); ctx.fill();
-      for (let i = 0; i < 5; i++) {
-        const a = i / 5 * Math.PI * 2;
-        ctx.beginPath(); ctx.arc(Math.cos(a) * r * 0.62, Math.sin(a) * r * 0.62, r * 0.15, 0, Math.PI * 2); ctx.fill();
+      // 白色球身 + 轻微立体明暗
+      const g = ctx.createRadialGradient(-r * 0.34, -r * 0.36, r * 0.1, 0, 0, r * 1.05);
+      g.addColorStop(0, 'rgba(255,255,255,0.99)');
+      g.addColorStop(1, 'rgba(206,214,224,0.99)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+      // 限制在球内绘制纹样
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.clip();
+      // 中心三色三角（红 / 蓝 / 绿，象征三个主办国）
+      const cols = ['rgba(214,42,52,0.95)', 'rgba(34,92,206,0.95)', 'rgba(34,150,84,0.95)'];
+      for (let i = 0; i < 3; i++) {
+        const a0 = i / 3 * TAU - Math.PI / 2, a1 = (i + 1) / 3 * TAU - Math.PI / 2, am = (a0 + a1) / 2;
+        ctx.fillStyle = cols[i];
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(a0) * r * 0.5, Math.sin(a0) * r * 0.5);
+        ctx.quadraticCurveTo(Math.cos(am) * r * 0.36, Math.sin(am) * r * 0.36, Math.cos(a1) * r * 0.5, Math.sin(a1) * r * 0.5);
+        ctx.closePath(); ctx.fill();
       }
-      ctx.strokeStyle = 'rgba(0,0,0,0.14)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      // 四片波浪缝（从中心向外的弧线，呼应 “la ola” 海浪四片设计）
+      ctx.strokeStyle = 'rgba(44,52,66,0.34)'; ctx.lineWidth = Math.max(0.5, r * 0.06); ctx.lineCap = 'round';
+      for (let i = 0; i < 3; i++) {
+        const a = i / 3 * TAU - Math.PI / 2;
+        const bx = Math.cos(a), by = Math.sin(a), px = -by, py = bx;
+        ctx.beginPath();
+        ctx.moveTo(bx * r * 0.5, by * r * 0.5);
+        ctx.quadraticCurveTo((bx * 0.8 + px * 0.5) * r, (by * 0.8 + py * 0.5) * r, bx * r * 1.05, by * r * 1.05);
+        ctx.stroke();
+      }
+      ctx.restore();
+      // 高光 + 边缘
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath(); ctx.arc(-r * 0.38, -r * 0.4, r * 0.16, 0, TAU); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.16)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.stroke();
       ctx.restore();
     },
     /* 小小球员：圆头+发、球衣身子、细胳膊腿；面朝左（跑动方向） */
