@@ -3284,6 +3284,21 @@
         const s = (k.run || 0) * amp;
         ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -15 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
       }
+      // 手臂分近/远两侧：远臂画在躯干之后（被球衣遮住一截），近臂画在躯干之前，走动时一前一后地摆
+      const sx = 0.5 * u, sy = -28.5 * u;          // 肩点（躯干顶端）
+      let nC, nH, fC, fH;                           // 近/远臂的肘控制点与手部端点
+      if (pose === 'juggle' || pose === 'winddup' || pose === 'kick') {
+        nC = [6 * u, -24 * u]; nH = [9 * u, -19 * u];      // 近臂略向前张（平衡）
+        fC = [-6 * u, -24 * u]; fH = [-8 * u, -20 * u];    // 远臂向后张
+      } else {                                      // walk / run：手臂沿前后方向自然摆动
+        const amp = pose === 'walk' ? 3.0 : 5.0;
+        const sw = (k.run || 0) * amp;
+        nC = [sw * 0.5 * u, -22 * u]; nH = [sw * u, -13 * u];
+        fC = [-sw * 0.5 * u, -22 * u]; fH = [-sw * u, -13 * u];
+      }
+      // 远侧手臂（略淡略细，画在躯干之前先行，随后被短裤/球衣覆盖一部分）
+      ctx.strokeStyle = 'rgba(228,193,162,0.9)'; ctx.lineWidth = 2.1 * u;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(fC[0], fC[1], fH[0], fH[1]); ctx.stroke();
       // 短裤（球衣同款国家色）
       ctx.fillStyle = k.shorts || 'rgba(60,52,46,0.92)';
       ctx.beginPath();
@@ -3292,21 +3307,9 @@
       // 身子（球衣）
       ctx.strokeStyle = k.jersey; ctx.lineWidth = 7.5 * u;
       ctx.beginPath(); ctx.moveTo(0, -17 * u); ctx.lineTo(1 * u, -30 * u); ctx.stroke();
-      // 胳膊（自然下垂、随步伐前后摆）
-      ctx.strokeStyle = skin; ctx.lineWidth = 2.4 * u;
-      if (pose === 'juggle' || pose === 'winddup' || pose === 'kick') {
-        ctx.beginPath();
-        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(-7 * u, -24 * u, -9 * u, -19 * u);
-        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(7 * u, -24 * u, 9 * u, -20 * u);
-        ctx.stroke();
-      } else {
-        const amp = pose === 'walk' ? 2.6 : 4.6;
-        const sw = (k.run || 0) * amp;
-        ctx.beginPath();
-        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(sw * 0.6 * u, -23 * u, sw * u, -17 * u);
-        ctx.moveTo(0, -28 * u); ctx.quadraticCurveTo(-sw * 0.6 * u, -23 * u, -sw * u, -17 * u);
-        ctx.stroke();
-      }
+      // 近侧手臂（在躯干之前）
+      ctx.strokeStyle = skin; ctx.lineWidth = 2.6 * u;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(nC[0], nC[1], nH[0], nH[1]); ctx.stroke();
       // 头
       ctx.fillStyle = skin;
       ctx.beginPath(); ctx.arc(1.5 * u, -36 * u, 5.5 * u, 0, Math.PI * 2); ctx.fill();
@@ -3342,10 +3345,10 @@
       // 身子（球衣）
       ctx.strokeStyle = k.jersey; ctx.lineWidth = 8 * u;
       ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(0, -30 * u); ctx.stroke();
-      // 胳膊：SIU 是双臂笔直下张、攥拳
+      // 胳膊：从躯干两端（肩膀）伸出，SIU 是双臂笔直下张、攥拳
       ctx.strokeStyle = skin; ctx.lineWidth = 2.6 * u;
-      const ax = o.armOut * u, ay = o.armDown * u;
-      ctx.beginPath(); ctx.moveTo(-1 * u, -27 * u); ctx.lineTo(-ax, ay); ctx.moveTo(1 * u, -27 * u); ctx.lineTo(ax, ay); ctx.stroke();
+      const ax = o.armOut * u, ay = o.armDown * u, sh = 3.6 * u, shy = -28.5 * u;
+      ctx.beginPath(); ctx.moveTo(-sh, shy); ctx.lineTo(-ax, ay); ctx.moveTo(sh, shy); ctx.lineTo(ax, ay); ctx.stroke();
       ctx.fillStyle = skin;
       ctx.beginPath(); ctx.arc(-ax, ay, 1.9 * u, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(ax, ay, 1.9 * u, 0, Math.PI * 2); ctx.fill();
