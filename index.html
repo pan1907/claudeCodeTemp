@@ -3124,7 +3124,8 @@
       const jerseys = ['rgba(206,62,62,0.96)', 'rgba(60,96,206,0.96)', 'rgba(232,200,64,0.96)', 'rgba(70,160,96,0.96)'];
       return {
         state: 'out', t: 0,
-        x: doorX, x0: doorX, jx: W * 0.56, outDur: 1.9,
+        x: doorX, x0: doorX, jx: W * 0.56, outDur: 1.7,
+        dribbleX: W * 0.40, dribDur: 1.5,          // 带球到左半部分（不太靠边）
         spd: m * 0.085, run: 0, footRaise: 0,
         ballX: doorX - 14, ballY: 0, ballRot: 0,
         juggles: 3 + Math.floor(Math.random() * 3), jdone: -1,
@@ -3154,7 +3155,18 @@
         k.footRaise = Math.max(0, Math.cos(Math.PI * ph));
         k.ballX = k.x - 9 * u; k.ballY = g - 12 * u - bounce * 32 * u; k.ballRot += dt * 6;
         this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'juggle');
-        if (Math.floor(k.t / cyc) >= k.juggles) { k.state = 'kick'; k.t = 0; }
+        if (Math.floor(k.t / cyc) >= k.juggles) { k.state = 'dribble'; k.t = 0; k.dribX0 = k.x; }
+      } else if (k.state === 'dribble') {      // 短跑带几步球到左半部分
+        const p = Math.min(1, k.t / k.dribDur);
+        k.x = lerp(k.dribX0, k.dribbleX, p);
+        k.run = Math.sin(t * 11);
+        k.ballX = k.x - 16 * u; k.ballY = g - k.ballR; k.ballRot -= (k.dribX0 - k.dribbleX) / k.dribDur * dt / k.ballR * -1;
+        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'run');
+        if (p >= 1) { k.state = 'winddup'; k.t = 0; }
+      } else if (k.state === 'winddup') {      // 蓄力：踢腿向后拉
+        k.ballX = k.x - 11 * u; k.ballY = g - k.ballR;
+        this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot); this.drawKid(k, t, 'winddup');
+        if (k.t > 0.45) { k.state = 'kick'; k.t = 0; }
       } else if (k.state === 'kick') {         // 起脚把球踢飞
         if (!k.ballFlying && !k.kicked) {
           if (k.t > 0.12) {                    // 触球瞬间，球飞出
@@ -3222,6 +3234,9 @@
       } else if (pose === 'kick') {
         ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-3 * u, 0); ctx.stroke();            // 支撑腿
         ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(12 * u, -4 * u); ctx.stroke();        // 抬起踢出的腿
+      } else if (pose === 'winddup') {
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(2 * u, 0); ctx.stroke();              // 支撑腿
+        ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(-9 * u, -3 * u); ctx.stroke();        // 踢腿向后拉（蓄力）
       } else {
         const s = (k.run || 0) * 5;
         ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -16 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
