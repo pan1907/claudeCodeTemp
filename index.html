@@ -3442,13 +3442,18 @@
       this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.40 : 0;
       // 秋天：一黑一粉两只胖鸟飞来吃苹果；冬天：约三成有一只寒鸦飞过天空
       if (si !== 2) { this.eatenApples = {}; this.birdPair = null; }
-      if (si === 2) {                          // 秋：两只胖鸟飞来吃苹果（果子还在树上时）
+      if (si === 2) {                          // 秋：一黑一粉两只胖鸟飞来吃苹果（果子还在树上时）
         this.winterRolled = false;
-        if (!this.autumnRolled && st.sp > 0.08) {
+        if (!this.autumnRolled && st.sp > 0.05) {
           this.autumnRolled = true;
-          this.pairSpawnT = (Math.random() < 1.0) ? t + rand(2, 6) : Infinity;  // 临时100%，方便看效果
+          // 只有在入秋够早（果子还满树、来得及吃完）时才安排；若是中途切进来、秋天已过半，就不安排，免得鸟落在光秃秃的树上
+          this.pairSpawnT = (st.sp < 0.15 && Math.random() < 1.0) ? t + rand(2, 5) : Infinity;  // 临时100%，方便看效果
         }
-        if (t >= this.pairSpawnT && !this.birdPair) { this.birdPair = this.makeBirdPair(); this.pairSpawnT = Infinity; }
+        if (t >= this.pairSpawnT && !this.birdPair) {
+          // 到点才真正飞来；但若此刻果子已开始被收走（后台休眠导致时间跳到秋深），就取消，免得落到空树上
+          if (st.sp < 0.25) this.birdPair = this.makeBirdPair();
+          this.pairSpawnT = Infinity;
+        }
       } else if (si === 3) {                   // 冬：飞过天空
         this.autumnRolled = false;
         if (!this.winterRolled) {
