@@ -3147,14 +3147,16 @@
     stepKid(dt, t) {
       const k = this.kid, g = this.horizon() + 1, u = Math.min(W, H) * 0.0011, m = Math.min(W, H);
       k.t += dt;
-      // 被踢飞的球：划弧 + 落地反弹，直到飞出左边
+      // 被踢飞的球：划弧 → 落地连弹几下 → 弹不动了就贴地往前滚，直到滚出左边
       if (k.ballFlying) {
-        k.ballX += k.ballVX * dt; k.ballY += k.ballVY * dt; k.ballVY += m * 0.95 * dt; k.ballRot -= k.ballVX * dt / k.ballR;
-        if (k.ballY > g - k.ballR && k.ballVY > 0) {     // 触地反弹
-          k.ballY = g - k.ballR; k.ballVY = -k.ballVY * 0.62; k.ballVX *= 0.84;
+        k.ballX += k.ballVX * dt; k.ballY += k.ballVY * dt; k.ballVY += m * 1.1 * dt; k.ballRot -= k.ballVX * dt / k.ballR;
+        if (k.ballY > g - k.ballR) {                       // 触地
+          k.ballY = g - k.ballR;
+          if (k.ballVY > m * 0.16) { k.ballVY = -k.ballVY * 0.58; k.ballVX *= 0.91; }  // 还有劲：弹起
+          else { k.ballVY = 0; k.ballVX *= 0.992; }                                    // 弹不动了：贴地滚
         }
         this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
-        if (k.ballX < -50) k.ballFlying = false;
+        if (k.ballX < -40) k.ballFlying = false;
       }
       if (k.state === 'out') {                 // 走出门、到垫球点
         const p = Math.min(1, k.t / k.outDur);
@@ -3186,7 +3188,7 @@
           if (k.t > 0.12) {                    // 触球瞬间，球飞出
             k.kicked = true; k.ballFlying = true;
             k.ballX = k.x - 12 * u; k.ballY = g - 11 * u;
-            k.ballVX = -m * 0.46; k.ballVY = -m * 0.52;   // 高一点的弧线，落地弹一两下再出屏
+            k.ballVX = -m * 0.29; k.ballVY = -m * 0.35;   // 较平的弧线，落地连弹三两下再滚出屏
           } else {
             k.ballX = k.x - 11 * u; k.ballY = g - k.ballR;
             this.drawBall(k.ballX, k.ballY, k.ballR, k.ballRot);
@@ -3211,8 +3213,8 @@
       } else if (k.state === 'pose') {         // SIUUU 定格
         this.drawKidFront(k, t, { air: false, spread: 1, armOut: 9, armDown: -13, shout: true });
         if (k.t > 1.7) { k.state = 'leave'; k.t = 0; }
-      } else {                                 // 跑出左边
-        k.x -= k.spd * dt; k.run = Math.sin(t * 11);
+      } else {                                 // 跑出左边（明显比出场快、步频更高）
+        k.x -= m * 0.26 * dt; k.run = Math.sin(t * 17);
         this.drawKid(k, t, 'run');
         if (k.x < -40) this.kid = null;
       }
@@ -3284,21 +3286,26 @@
         const s = (k.run || 0) * amp;
         ctx.beginPath(); ctx.moveTo(0, -15 * u); ctx.lineTo(s * u, 0); ctx.moveTo(0, -15 * u); ctx.lineTo(-s * u, 0); ctx.stroke();
       }
-      // 手臂分近/远两侧：远臂画在躯干之后（被球衣遮住一截），近臂画在躯干之前，走动时一前一后地摆
-      const sx = 0.5 * u, sy = -28.5 * u;          // 肩点（躯干顶端）
-      let nC, nH, fC, fH;                           // 近/远臂的肘控制点与手部端点
+      // 手臂：肩点在躯干顶端，肩→肘→手两段（肘部略弯）。近臂画在球衣之前、远臂在之后，
+      //       走动时近臂在前、远臂在后地交替摆；远臂略淡略细以示纵深，避免两臂在中间重叠
+      const shX = 0.6 * u, shY = -29.5 * u;        // 肩点
+      let nSw, fSw;                                 // 近/远臂手部的前后位移
       if (pose === 'juggle' || pose === 'winddup' || pose === 'kick') {
-        nC = [6 * u, -24 * u]; nH = [9 * u, -19 * u];      // 近臂略向前张（平衡）
-        fC = [-6 * u, -24 * u]; fH = [-8 * u, -20 * u];    // 远臂向后张
-      } else {                                      // walk / run：手臂沿前后方向自然摆动
-        const amp = pose === 'walk' ? 3.0 : 5.0;
-        const sw = (k.run || 0) * amp;
-        nC = [sw * 0.5 * u, -22 * u]; nH = [sw * u, -13 * u];
-        fC = [-sw * 0.5 * u, -22 * u]; fH = [-sw * u, -13 * u];
+        nSw = 8; fSw = -6;                          // 张臂保持平衡
+      } else {                                      // walk / run：一前一后地摆
+        const amp = pose === 'walk' ? 3.6 : 5.4;
+        const s = (k.run || 0) * amp;
+        nSw = s; fSw = -s;
       }
-      // 远侧手臂（略淡略细，画在躯干之前先行，随后被短裤/球衣覆盖一部分）
-      ctx.strokeStyle = 'rgba(228,193,162,0.9)'; ctx.lineWidth = 2.1 * u;
-      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(fC[0], fC[1], fH[0], fH[1]); ctx.stroke();
+      const armPath = (sw, base) => {                // 肩→肘→手；base 为前后基准偏移（近臂略靠前、远臂略靠后，避免重叠）
+        ctx.beginPath();
+        ctx.moveTo(shX, shY);
+        ctx.lineTo((base + sw * 0.45) * u, -22 * u); // 肘
+        ctx.lineTo((base + sw) * u, -10 * u);        // 手（垂到大腿）
+        ctx.stroke();
+      };
+      // 远臂（先画，会被短裤/球衣盖住一截）
+      ctx.strokeStyle = 'rgba(226,190,158,0.85)'; ctx.lineWidth = 2.1 * u; armPath(fSw, -0.8);
       // 短裤（球衣同款国家色）
       ctx.fillStyle = k.shorts || 'rgba(60,52,46,0.92)';
       ctx.beginPath();
@@ -3307,9 +3314,8 @@
       // 身子（球衣）
       ctx.strokeStyle = k.jersey; ctx.lineWidth = 7.5 * u;
       ctx.beginPath(); ctx.moveTo(0, -17 * u); ctx.lineTo(1 * u, -30 * u); ctx.stroke();
-      // 近侧手臂（在躯干之前）
-      ctx.strokeStyle = skin; ctx.lineWidth = 2.6 * u;
-      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.quadraticCurveTo(nC[0], nC[1], nH[0], nH[1]); ctx.stroke();
+      // 近臂（画在躯干之前）
+      ctx.strokeStyle = skin; ctx.lineWidth = 2.6 * u; armPath(nSw, 0.8);
       // 头
       ctx.fillStyle = skin;
       ctx.beginPath(); ctx.arc(1.5 * u, -36 * u, 5.5 * u, 0, Math.PI * 2); ctx.fill();
@@ -3347,7 +3353,7 @@
       ctx.beginPath(); ctx.moveTo(0, -16 * u); ctx.lineTo(0, -30 * u); ctx.stroke();
       // 胳膊：从躯干两端（肩膀）伸出，SIU 是双臂笔直下张、攥拳
       ctx.strokeStyle = skin; ctx.lineWidth = 2.6 * u;
-      const ax = o.armOut * u, ay = o.armDown * u, sh = 3.6 * u, shy = -28.5 * u;
+      const ax = o.armOut * u, ay = o.armDown * u, sh = 3.6 * u, shy = -29.5 * u;
       ctx.beginPath(); ctx.moveTo(-sh, shy); ctx.lineTo(-ax, ay); ctx.moveTo(sh, shy); ctx.lineTo(ax, ay); ctx.stroke();
       ctx.fillStyle = skin;
       ctx.beginPath(); ctx.arc(-ax, ay, 1.9 * u, 0, Math.PI * 2); ctx.fill();
