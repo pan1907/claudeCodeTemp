@@ -3608,7 +3608,7 @@
       if (si === 0) {
         if (!this.springRolled && st.sp > 0.30) {
           this.springRolled = true;
-          this.duckSpawnT = (st.sp < 0.58 && Math.random() < 0.30) ? t + rand(2, 8) : Infinity;  // 约三成的春天出现
+          this.duckSpawnT = (st.sp < 0.58 && Math.random() < 1.0) ? t + rand(2, 8) : Infinity;  // 临时调成必现，方便预览
         }
         if (t >= this.duckSpawnT && !this.ducks) {
           if (st.sp < 0.70) this.ducks = this.makeDucks();
