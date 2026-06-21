@@ -3494,7 +3494,7 @@
       return {
         dir, x: fromLeft ? -30 : W + 30,
         spd: m * rand(0.05, 0.07),
-        baseY: hY + m * 0.04,                          // 走在比稻苗略靠前的田土上
+        baseY: hY + m * 0.006,                         // 贴着田埂线走（和猫、农人同一条地面线）
         members, nextSound: rand(1.2, 2.6),
       };
     },
