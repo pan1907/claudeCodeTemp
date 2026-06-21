@@ -3558,20 +3558,20 @@
       ctx.beginPath(); ctx.arc(hx + 1.4 * U, hy - 1 * U, 0.95 * U, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     },
-    /* 一颗流星：从高空某处斜射而下，拖一条渐隐的尾巴 */
+    /* 一颗流星：在高空轻轻斜划一道、很快就淡去，不会扎向地面 */
     spawnMeteor(delay = 0) {
       const m = Math.min(W, H);
       const dir = Math.random() < 0.5 ? 1 : -1;                 // 朝左下或右下
       const x = dir > 0 ? rand(W * 0.04, W * 0.55) : rand(W * 0.45, W * 0.96);
-      const y = rand(H * 0.03, H * 0.28);
-      const v = m * rand(1.1, 1.7);
-      const ang = (Math.PI / 180) * rand(16, 34);               // 与水平的俯角
+      const y = rand(H * 0.04, H * 0.20);                       // 只在高空那一带
+      const v = m * rand(0.85, 1.25);
+      const ang = (Math.PI / 180) * rand(10, 22);               // 俯角放平，掠过而非下扎
       this.meteors.push({
         x, y,
         vx: dir * v * Math.cos(ang),
         vy: v * Math.sin(ang),
-        life: -delay, dur: rand(0.5, 0.9),
-        len: m * rand(0.08, 0.16),
+        life: -delay, dur: rand(0.45, 0.7),
+        len: m * rand(0.05, 0.10),
       });
     },
     spawnPart(x, y, c, vy0, g, dur, spread = 40) {
@@ -3686,15 +3686,15 @@
         ctx.fillStyle = rgb(skyT);
         ctx.beginPath(); ctx.arc(mx + dir * ill * 2.3 * mr, my - mr * 0.10, mr * 1.02, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
-        // 流星：拖一条渐隐尾巴划过夜空
-        const lw = Math.max(1, Math.min(W, H) * 0.0022);
+        // 流星：拖一条渐隐尾巴轻轻划过高空
+        const lw = Math.max(1, Math.min(W, H) * 0.0015);
         ctx.lineCap = 'round';
         for (let i = this.meteors.length - 1; i >= 0; i--) {
           const me = this.meteors[i];
           me.life += dt;
           if (me.life < 0) continue;                 // 还没到点（延迟连发）
           me.x += me.vx * dt; me.y += me.vy * dt;
-          if (me.life >= me.dur || me.y > hY) { this.meteors.splice(i, 1); continue; }
+          if (me.life >= me.dur || me.y > H * 0.40) { this.meteors.splice(i, 1); continue; }  // 高空就淡去，不扎向地面
           const a = Math.sin(Math.min(1, me.life / me.dur) * Math.PI) * nk;   // 渐显渐隐
           const v = Math.hypot(me.vx, me.vy) || 1;
           const tx = me.x - me.vx / v * me.len, ty = me.y - me.vy / v * me.len;
