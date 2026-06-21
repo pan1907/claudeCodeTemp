@@ -606,6 +606,49 @@
       g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.08);
       o.start(t0); o.stop(t0 + dur + 0.12);
     },
+    /* 母鸭"嘎"：鼻音、略带沙哑的短促下滑，偶尔连叫两声 */
+    quack(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const n = Math.random() < 0.4 ? 2 : 1;
+      for (let i = 0; i < n; i++) {
+        const ts = t0 + i * rand(0.18, 0.24);
+        const dur = rand(0.12, 0.17);
+        const f0 = rand(290, 350);
+        const o = c.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f0 * 1.15, ts);
+        o.frequency.linearRampToValueAtTime(f0 * 0.72, ts + dur);     // 下滑的"嘎"
+        const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1100; bp.Q.value = 2.4;
+        const bp2 = c.createBiquadFilter(); bp2.type = 'bandpass'; bp2.frequency.value = 2150; bp2.Q.value = 3;
+        const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3000;
+        const ns = this.noise();                                      // 一点沙哑
+        const nf = c.createBiquadFilter(); nf.type = 'bandpass'; nf.frequency.value = 1600; nf.Q.value = 0.8;
+        const ng = c.createGain(); ng.gain.value = 0.12;
+        const g = c.createGain(); g.gain.value = 0;
+        o.connect(bp); o.connect(bp2); bp.connect(lp); bp2.connect(lp); lp.connect(g);
+        ns.connect(nf); nf.connect(ng); ng.connect(g); g.connect(out);
+        g.gain.setValueAtTime(0, ts);
+        g.gain.linearRampToValueAtTime(0.17, ts + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ts + dur + 0.05);
+        o.start(ts); o.stop(ts + dur + 0.08);
+      }
+    },
+    /* 小鸭"叽"：又高又短的一声 */
+    peep(out) {
+      const c = this.ctx, t0 = c.currentTime;
+      const dur = rand(0.07, 0.11);
+      const f0 = rand(1500, 2100);
+      const o = c.createOscillator(); o.type = 'triangle';
+      o.frequency.setValueAtTime(f0 * 0.9, t0);
+      o.frequency.linearRampToValueAtTime(f0 * 1.08, t0 + dur * 0.5);
+      o.frequency.linearRampToValueAtTime(f0 * 0.96, t0 + dur);       // 小小一个"叽"
+      const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f0; bp.Q.value = 4;
+      const g = c.createGain(); g.gain.value = 0;
+      o.connect(bp); bp.connect(g); g.connect(out);
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(0.11, t0 + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.03);
+      o.start(t0); o.stop(t0 + dur + 0.05);
+    },
     /* 一声木鱼：空心木头的"笃"——一个快速衰减的木质共鸣 + 起音的敲击声 */
     woodfish(out) {
       const c = this.ctx, t0 = c.currentTime;
@@ -2223,6 +2266,9 @@
       this.kid = null;        // 夏日跑出来踢球的小朋友
       this.kidRolled = false;
       this.kidSpawnT = Infinity;
+      this.ducks = null;      // 春日鸭妈妈带小鸭排队走过
+      this.springRolled = false;
+      this.duckSpawnT = Infinity;
       this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
@@ -3437,6 +3483,77 @@
       ctx.closePath(); ctx.fill();
       ctx.restore();
     },
+    /* 春天：鸭妈妈领着一串小鸭排队走过田埂 */
+    makeDucks() {
+      const m = Math.min(W, H), hY = this.horizon();
+      const fromLeft = Math.random() < 0.5, dir = fromLeft ? 1 : -1;
+      const n = 3 + Math.floor(Math.random() * 3);    // 3~5 只小鸭
+      const gap = m * 0.020;
+      const members = [{ mother: true, s: 1.25, lag: 0, ph: rand(0, 7) }];
+      for (let i = 0; i < n; i++) members.push({ mother: false, s: 0.62, lag: gap * 1.5 + i * gap, ph: rand(0, 7) });
+      return {
+        dir, x: fromLeft ? -30 : W + 30,
+        spd: m * rand(0.05, 0.07),
+        baseY: hY + m * 0.04,                          // 走在比稻苗略靠前的田土上
+        members, nextSound: rand(1.2, 2.6),
+      };
+    },
+    stepDucks(dt, t, nk) {
+      const f = this.ducks, u = Math.min(W, H) * 0.0006;
+      f.x += f.dir * f.spd * dt;
+      f.nextSound -= dt;
+      if (f.nextSound <= 0) { f.nextSound = rand(1.4, 3.2); sfx(Math.random() < 0.45 ? 'quack' : 'peep'); }
+      for (let i = f.members.length - 1; i >= 0; i--) {   // 从队尾往队首画
+        const mm = f.members[i];
+        this.drawDuck(f.x - f.dir * mm.lag, f.baseY, u, t, mm.s, f.dir, mm.ph, mm.mother, nk);
+      }
+      const tailLag = f.members[f.members.length - 1].lag;
+      const tail = f.x - f.dir * tailLag;
+      if (f.dir > 0 ? tail > W + 40 : tail < -40) this.ducks = null;
+    },
+    /* 一只侧面的小鸭：白母鸭 / 黄绒小鸭，走路一摇一摆 */
+    drawDuck(x, g, u, t, s, dir, phase, mother, nk) {
+      const a = 0.95 - (nk || 0) * 0.3;
+      const body = mother ? `rgba(245,246,248,${a})` : `rgba(248,206,72,${a})`;
+      const wing = mother ? `rgba(223,226,232,${a})` : `rgba(232,184,52,${a})`;
+      const bill = `rgba(242,158,46,${a})`;
+      const dark = `rgba(64,54,46,${a})`;
+      const wad = Math.sin(t * 7 + phase);                 // 摇摆相位
+      const U = u * s;
+      ctx.save();
+      ctx.translate(x, g);
+      ctx.scale(dir, 1);
+      ctx.rotate(wad * 0.10);                              // 左右摇摆
+      ctx.translate(0, -Math.abs(wad) * 1.1 * U);          // 一点上下颠
+      // 橙色小脚（交替迈步）
+      ctx.strokeStyle = bill; ctx.lineWidth = 1.7 * U; ctx.lineCap = 'round';
+      const stp = wad * 3;
+      ctx.beginPath();
+      ctx.moveTo(-2 * U, -2 * U); ctx.lineTo((-2 + stp) * U, 0);
+      ctx.moveTo(3 * U, -2 * U); ctx.lineTo((3 - stp) * U, 0);
+      ctx.stroke();
+      // 身子
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.ellipse(0, -6 * U, 9 * U, 6 * U, 0, 0, Math.PI * 2); ctx.fill();
+      // 翘尾巴
+      ctx.beginPath(); ctx.moveTo(-7.5 * U, -7.5 * U); ctx.lineTo(-12 * U, -10 * U); ctx.lineTo(-7.5 * U, -4.5 * U); ctx.closePath(); ctx.fill();
+      // 翅膀
+      ctx.fillStyle = wing;
+      ctx.beginPath(); ctx.ellipse(-1.5 * U, -6 * U, 5 * U, 3.3 * U, 0, 0, Math.PI * 2); ctx.fill();
+      // 脖子 + 头
+      const hx = 7 * U, hy = mother ? -13.5 * U : -11.5 * U;
+      ctx.strokeStyle = body; ctx.lineWidth = (mother ? 4.2 : 4.8) * U; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(4 * U, -8 * U); ctx.lineTo(hx, hy); ctx.stroke();
+      ctx.fillStyle = body;
+      ctx.beginPath(); ctx.arc(hx, hy, (mother ? 4.2 : 4) * U, 0, Math.PI * 2); ctx.fill();
+      // 嘴
+      ctx.fillStyle = bill;
+      ctx.beginPath(); ctx.ellipse(hx + 4 * U, hy + 0.6 * U, 3 * U, 1.7 * U, 0, 0, Math.PI * 2); ctx.fill();
+      // 眼
+      ctx.fillStyle = dark;
+      ctx.beginPath(); ctx.arc(hx + 1.4 * U, hy - 1 * U, 0.95 * U, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    },
     spawnPart(x, y, c, vy0, g, dur, spread = 40) {
       if (this.parts.length > 90) this.parts.shift();
       this.parts.push({
@@ -3487,6 +3604,17 @@
         }
         if (t >= this.kidSpawnT && !this.kid) { this.kid = this.makeKid(); this.kidSpawnT = Infinity; }
       } else { this.kidRolled = false; this.kid = null; }
+      // 春天：鸭妈妈带小鸭（白天、雪化田绿之后）
+      if (si === 0) {
+        if (!this.springRolled && st.sp > 0.30) {
+          this.springRolled = true;
+          this.duckSpawnT = (st.sp < 0.58 && Math.random() < 0.30) ? t + rand(2, 8) : Infinity;  // 约三成的春天出现
+        }
+        if (t >= this.duckSpawnT && !this.ducks) {
+          if (st.sp < 0.70) this.ducks = this.makeDucks();
+          this.duckSpawnT = Infinity;
+        }
+      } else { this.springRolled = false; this.ducks = null; }
       const A = SEASONS[si], B = SEASONS[(si + 1) % 4];
       const hY = this.horizon();
       // 天色与土色：季节之间过渡，再压上夜色
@@ -3729,6 +3857,11 @@
           this.drawDaw(k, t);
           if (k.x < -90 || k.x > W + 90) this.daw = null;
         }
+      }
+      // 春天的鸭妈妈带小鸭
+      if (this.ducks) {
+        if (si !== 0) this.ducks = null;
+        else this.stepDucks(dt, t, nk);
       }
 
       // 飘浮的颗粒（花瓣 / 谷粒 / 水滴 / 雪）
