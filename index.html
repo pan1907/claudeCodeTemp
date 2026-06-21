@@ -912,6 +912,7 @@
       this.dolphins = [];
       this.spray = [];
       this.foams = [];
+      this.moonPh = moonPhase(new Date());  // 当天真实月相
     },
     /* 在水面 x 处溅起一蓬水花：水珠 + 留在水面的泡沫 */
     splashAt(x, strength) {
@@ -944,12 +945,27 @@
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
 
-      // 夜里挂一轮明月
+      // 夜里挂一轮明月（按当天真实月相显示盈亏）
       if (na > 0.05) {
+        const mr = Math.min(W, H) * 0.030;
+        const ph = this.moonPh;
+        const ill = Math.max(0.06, ph < 0.5 ? ph * 2 : (1 - ph) * 2);  // 被照亮比例
+        const dir = ph < 0.5 ? -1 : 1;                                  // 渐盈亮面在右、渐亏在左
+        // 取月所在高度的天色、叠一层月晕，作为盈亏阴影色，让暗面融进夜空
+        const fy = P.glowY, sk = P.sky;
+        const stops = [[0, sk[0]], [0.45, sk[1]], [0.62, sk[2]], [1, sk[3]]];
+        let base = sk[3];
+        for (let i = 0; i < stops.length - 1; i++) {
+          if (fy <= stops[i + 1][0]) { const kk = (fy - stops[i][0]) / (stops[i + 1][0] - stops[i][0]); base = lerpC(stops[i][1], stops[i + 1][1], kk); break; }
+        }
+        const sc = lerpC(base, [P.glow[0], P.glow[1], P.glow[2]], P.glow[3]);
         ctx.fillStyle = `rgba(232, 238, 252, ${0.9 * na})`;
-        ctx.beginPath();
-        ctx.arc(gx, gy, Math.min(W, H) * 0.030, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(gx, gy, mr, 0, Math.PI * 2); ctx.fill();
+        ctx.save();
+        ctx.beginPath(); ctx.arc(gx, gy, mr, 0, Math.PI * 2); ctx.clip();
+        ctx.fillStyle = `rgba(${sc[0] | 0},${sc[1] | 0},${sc[2] | 0},${na})`;
+        ctx.beginPath(); ctx.arc(gx + dir * ill * 2.3 * mr, gy - mr * 0.10, mr * 1.02, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
       }
 
       // 海豚画在波浪之前：水面以下的身体会被随后的波浪挡住，真正像从海里跃出
