@@ -3447,7 +3447,7 @@
         if (!this.autumnRolled && st.sp > 0.05) {
           this.autumnRolled = true;
           // 只有在入秋够早（果子还满树、来得及吃完）时才安排；若是中途切进来、秋天已过半，就不安排，免得鸟落在光秃秃的树上
-          this.pairSpawnT = (st.sp < 0.15 && Math.random() < 1.0) ? t + rand(2, 5) : Infinity;  // 临时100%，方便看效果
+          this.pairSpawnT = (st.sp < 0.15 && Math.random() < 0.30) ? t + rand(2, 5) : Infinity;  // 约三成的秋天出现
         }
         if (t >= this.pairSpawnT && !this.birdPair) {
           // 到点才真正飞来；但若此刻果子已开始被收走（后台休眠导致时间跳到秋深），就取消，免得落到空树上
@@ -3466,7 +3466,7 @@
       if (si === 1) {
         if (!this.kidRolled && st.sp > 0.10 && st.sp < 0.55) {
           this.kidRolled = true;
-          this.kidSpawnT = (Math.random() < 1.0) ? t + rand(1, 4) : Infinity;  // 临时100%，方便看效果
+          this.kidSpawnT = (Math.random() < 0.30) ? t + rand(1, 4) : Infinity;  // 约三成的夏天出现
         }
         if (t >= this.kidSpawnT && !this.kid) { this.kid = this.makeKid(); this.kidSpawnT = Infinity; }
       } else { this.kidRolled = false; this.kid = null; }
