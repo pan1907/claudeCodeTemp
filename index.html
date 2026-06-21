@@ -2273,6 +2273,13 @@
       this.meteorRolled = false;
       this.showerUntil = 0;   // 流星雨的持续时刻
       this.nextMeteor = Infinity;
+      this.fog = 0;           // 晨雾的当前浓度
+      this.fogOn = false;     // 这个清晨是否起雾
+      this.fogRolled = false;
+      this.fogBanks = Array.from({ length: 6 }, () => ({   // 几块缓缓横向飘的雾团：扁平、贴着地平线错落
+        bx: rand(0, 1), yoff: rand(-0.022, 0.018), wf: rand(0.30, 0.52), hf: rand(0.018, 0.030),
+        al: rand(0.16, 0.26), drift: rand(5, 14) * (Math.random() < 0.5 ? -1 : 1), ph: rand(0, 7),
+      }));
       this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
@@ -3574,6 +3581,32 @@
         len: m * rand(0.05, 0.10),
       });
     },
+    /* 晨雾：贴地平线一条柔光雾带（各季都看得见）+ 几块飘动的雾团（体积与流动） */
+    drawFog(amount, hY, t) {
+      if (amount <= 0.01) return;
+      // A：地平线柔光带——densest 在地平线略上方，往上化进天、往下很快收住不糊前景
+      const top = hY - H * 0.10, hgt = H * 0.13;
+      const band = ctx.createLinearGradient(0, top, 0, top + hgt);
+      band.addColorStop(0, 'rgba(239,241,243,0)');
+      band.addColorStop(0.62, `rgba(241,243,245,${0.30 * amount})`);
+      band.addColorStop(1, 'rgba(239,241,243,0)');
+      ctx.fillStyle = band; ctx.fillRect(0, top, W, hgt);
+      // B：几块飘动的雾团
+      const M = W * 0.6, span = W + 2 * M;
+      for (const b of this.fogBanks) {
+        let x = (b.bx * span + t * b.drift) % span;
+        if (x < 0) x += span;
+        x -= M;
+        const y = hY + b.yoff * H + Math.sin(t * 0.13 + b.ph) * H * 0.008;
+        const rw = W * b.wf, rh = H * b.hf;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, rw);
+        const a = b.al * amount;
+        g.addColorStop(0, `rgba(237,239,241,${a})`);
+        g.addColorStop(1, 'rgba(237,239,241,0)');
+        ctx.save(); ctx.translate(x, y); ctx.scale(1, rh / rw); ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, rw, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
+    },
     spawnPart(x, y, c, vy0, g, dur, spread = 40) {
       if (this.parts.length > 90) this.parts.shift();
       this.parts.push({
@@ -3605,6 +3638,22 @@
         if (Math.random() < 0.22) this.spawnMeteor(rand(0.05, 0.25));   // 偶尔双连发
         this.nextMeteor = t + rand(0.7, 3.0);
       }
+      // 晨雾：每季清晨按季节加权掷一次骰子，决定这个早晨起不起雾
+      const FOG_P = [0.45, 0.20, 0.45, 0.15];                  // 春 夏 秋 冬：春秋多、夏少、冬最少
+      if (st.sp > 0.32 && st.sp < 0.90) this.fogRolled = false;  // 离开清晨后复位，给下一个早晨重掷
+      if (st.sp < 0.04 && !this.fogRolled) {
+        this.fogRolled = true;
+        this.fogOn = Math.random() < FOG_P[si];
+      }
+      let fogTarget = 0;                                       // 清晨内的浓度包络：升起→最浓→被晒散
+      if (this.fogOn) {
+        const sp = st.sp;
+        if (sp < 0.04) fogTarget = 0;
+        else if (sp < 0.10) fogTarget = (sp - 0.04) / 0.06;
+        else if (sp < 0.16) fogTarget = 1;
+        else if (sp < 0.26) fogTarget = 1 - (sp - 0.16) / 0.10;
+      }
+      this.fog += (fogTarget - this.fog) * Math.min(1, dt * 3);
       // 落果前后（秋天 sp 0.20~0.46），猫挑目标时有概率选到树下，自然溜达过去
       this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.40 : 0;
       // 秋天：一黑一粉两只胖鸟飞来吃苹果；冬天：约三成有一只寒鸦飞过天空
@@ -3813,6 +3862,9 @@
         ctx.closePath();
         ctx.fill();
       }
+
+      // 晨雾：漫在田园上的一层薄雾（veil 住远景，前景的猫/鸭仍清晰）
+      this.drawFog(this.fog, hY, t);
 
       // 冬天的雪，时密时疏
       this.treeShake *= Math.exp(-3 * dt);
