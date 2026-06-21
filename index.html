@@ -3493,7 +3493,7 @@
       for (let i = 0; i < n; i++) members.push({ mother: false, s: 0.62, lag: gap * 1.5 + i * gap, ph: rand(0, 7) });
       return {
         dir, x: fromLeft ? -30 : W + 30,
-        spd: m * rand(0.05, 0.07),
+        spd: W * rand(0.05, 0.065),                    // 按屏宽算脚程，保证天黑前能走完全程
         baseY: hY + m * 0.006,                         // 贴着田埂线走（和猫、农人同一条地面线）
         members, nextSound: rand(1.2, 2.6),
       };
@@ -3604,14 +3604,15 @@
         }
         if (t >= this.kidSpawnT && !this.kid) { this.kid = this.makeKid(); this.kidSpawnT = Infinity; }
       } else { this.kidRolled = false; this.kid = null; }
-      // 春天：鸭妈妈带小鸭（白天、雪化田绿之后）
+      // 春天：鸭妈妈带小鸭（只在白天，且留足走完全程的余地，免得走到一半天黑了）
       if (si === 0) {
-        if (!this.springRolled && st.sp > 0.30) {
+        if (!this.springRolled && st.sp > 0.20) {
           this.springRolled = true;
-          this.duckSpawnT = (st.sp < 0.58 && Math.random() < 0.30) ? t + rand(2, 8) : Infinity;  // 约三成的春天出现
+          // 春天前段就安排：约 20s 走完会推进 sp≈0.22，落点仍远在入夜（sp 0.60）之前
+          this.duckSpawnT = (st.sp < 0.30 && Math.random() < 0.30) ? t + rand(1, 3) : Infinity;  // 约三成的春天出现
         }
         if (t >= this.duckSpawnT && !this.ducks) {
-          if (st.sp < 0.70) this.ducks = this.makeDucks();
+          if (st.sp < 0.34) this.ducks = this.makeDucks();   // 万一时间跳变到了下午就放弃，不让它撞上夜晚
           this.duckSpawnT = Infinity;
         }
       } else { this.springRolled = false; this.ducks = null; }
