@@ -2269,6 +2269,10 @@
       this.ducks = null;      // 春日鸭妈妈带小鸭排队走过
       this.springRolled = false;
       this.duckSpawnT = Infinity;
+      this.meteors = [];      // 夜晚划过的流星
+      this.meteorRolled = false;
+      this.showerUntil = 0;   // 流星雨的持续时刻
+      this.nextMeteor = Infinity;
       this.catLure = 0;       // 秋天落果前后，猫偏向溜达到树下的概率
       // 屋边的苹果树：错落的枝桠骨架 + 固定的树冠簇、果位与花位，随四季换装
       const tR = Math.min(W, H) * 0.082;
@@ -3554,6 +3558,22 @@
       ctx.beginPath(); ctx.arc(hx + 1.4 * U, hy - 1 * U, 0.95 * U, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     },
+    /* 一颗流星：从高空某处斜射而下，拖一条渐隐的尾巴 */
+    spawnMeteor(delay = 0) {
+      const m = Math.min(W, H);
+      const dir = Math.random() < 0.5 ? 1 : -1;                 // 朝左下或右下
+      const x = dir > 0 ? rand(W * 0.04, W * 0.55) : rand(W * 0.45, W * 0.96);
+      const y = rand(H * 0.03, H * 0.28);
+      const v = m * rand(1.1, 1.7);
+      const ang = (Math.PI / 180) * rand(16, 34);               // 与水平的俯角
+      this.meteors.push({
+        x, y,
+        vx: dir * v * Math.cos(ang),
+        vy: v * Math.sin(ang),
+        life: -delay, dur: rand(0.5, 0.9),
+        len: m * rand(0.08, 0.16),
+      });
+    },
     spawnPart(x, y, c, vy0, g, dur, spread = 40) {
       if (this.parts.length > 90) this.parts.shift();
       this.parts.push({
@@ -3572,6 +3592,19 @@
       const nk = seasonNight(st.sp);
       this.lastNk = nk;
       this.lastSi = si;
+      // 夜晚流星雨：每个深夜掷一次骰子，约三成会来一阵，持续十几秒、断续划过几颗
+      if (nk > 0.85) {
+        if (!this.meteorRolled) {
+          this.meteorRolled = true;
+          if (Math.random() < 0.32) { this.showerUntil = t + rand(12, 22); this.nextMeteor = t + rand(0.4, 2); }
+          else { this.showerUntil = 0; this.nextMeteor = Infinity; }
+        }
+      } else if (nk < 0.10) { this.meteorRolled = false; }
+      if (t < this.showerUntil && t >= this.nextMeteor && nk > 0.6) {
+        this.spawnMeteor();
+        if (Math.random() < 0.22) this.spawnMeteor(rand(0.05, 0.25));   // 偶尔双连发
+        this.nextMeteor = t + rand(0.7, 3.0);
+      }
       // 落果前后（秋天 sp 0.20~0.46），猫挑目标时有概率选到树下，自然溜达过去
       this.catLure = (si === 2 && st.sp >= 0.20 && st.sp <= 0.46) ? 0.40 : 0;
       // 秋天：一黑一粉两只胖鸟飞来吃苹果；冬天：约三成有一只寒鸦飞过天空
@@ -3653,6 +3686,27 @@
         ctx.fillStyle = rgb(skyT);
         ctx.beginPath(); ctx.arc(mx + dir * ill * 2.3 * mr, my - mr * 0.10, mr * 1.02, 0, Math.PI * 2); ctx.fill();
         ctx.restore();
+        // 流星：拖一条渐隐尾巴划过夜空
+        const lw = Math.max(1, Math.min(W, H) * 0.0022);
+        ctx.lineCap = 'round';
+        for (let i = this.meteors.length - 1; i >= 0; i--) {
+          const me = this.meteors[i];
+          me.life += dt;
+          if (me.life < 0) continue;                 // 还没到点（延迟连发）
+          me.x += me.vx * dt; me.y += me.vy * dt;
+          if (me.life >= me.dur || me.y > hY) { this.meteors.splice(i, 1); continue; }
+          const a = Math.sin(Math.min(1, me.life / me.dur) * Math.PI) * nk;   // 渐显渐隐
+          const v = Math.hypot(me.vx, me.vy) || 1;
+          const tx = me.x - me.vx / v * me.len, ty = me.y - me.vy / v * me.len;
+          const grad = ctx.createLinearGradient(me.x, me.y, tx, ty);
+          grad.addColorStop(0, `rgba(255,255,255,${a})`);
+          grad.addColorStop(0.4, `rgba(206,222,255,${a * 0.5})`);
+          grad.addColorStop(1, 'rgba(206,222,255,0)');
+          ctx.strokeStyle = grad; ctx.lineWidth = lw;
+          ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(me.x, me.y); ctx.stroke();
+          ctx.fillStyle = `rgba(255,255,255,${a})`;
+          ctx.beginPath(); ctx.arc(me.x, me.y, lw * 0.9, 0, Math.PI * 2); ctx.fill();
+        }
       }
 
       // 暖阳（冬天偏冷，入夜隐去）
