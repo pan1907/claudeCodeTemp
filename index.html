@@ -3488,9 +3488,9 @@
       const m = Math.min(W, H), hY = this.horizon();
       const fromLeft = Math.random() < 0.5, dir = fromLeft ? 1 : -1;
       const n = 6;                                    // 6 只小鸭
-      const gap = m * 0.020;
+      const gap = m * 0.024;                          // 拉开一点间距，6 只都数得清
       const members = [{ mother: true, s: 1.25, lag: 0, ph: rand(0, 7) }];
-      for (let i = 0; i < n; i++) members.push({ mother: false, s: 0.62, lag: gap * 1.5 + i * gap, ph: rand(0, 7) });
+      for (let i = 0; i < n; i++) members.push({ mother: false, s: 0.70, lag: gap * 1.5 + i * gap, ph: rand(0, 7) });
       return {
         dir, x: fromLeft ? -30 : W + 30,
         spd: W * rand(0.05, 0.065),                    // 按屏宽算脚程，保证天黑前能走完全程
