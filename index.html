@@ -2194,6 +2194,7 @@
       this.treeShake = 0;   // 摇树的余晃
       this.treeSnow = 1;    // 树上积雪量（摇掉后慢慢再积起来）
       this.snowPh = rand(0, 7);
+      this.moonPh = moonPhase(new Date());  // 当天真实月相（与昼夜场景一致）
       this.cat = { x: W * 0.5, dir: 1, state: 'sit', timer: 3, target: W * 0.5, jump: 0, bonk: 0 };
       this.fallApples = [];   // 从树上掉落的苹果
       this.daw = null;        // 寒鸦：冬日飞过 / 秋日飞来吃苹果
@@ -3488,10 +3489,25 @@
           ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
         }
         const mx = W * 0.30, my = H * 0.16, mr = Math.min(W, H) * 0.026;
+        const ph = this.moonPh;
+        // 被照亮的比例：0 新月 → 1 满月（留一丝月牙避免完全消失）；渐盈亮面在右、渐亏在左
+        const ill = Math.max(0.06, ph < 0.5 ? ph * 2 : (1 - ph) * 2);
+        const dir = ph < 0.5 ? -1 : 1;
+        // 月光柔晕：满月更亮、月牙更淡
+        const glow = ctx.createRadialGradient(mx, my, 0, mx, my, mr * 5);
+        glow.addColorStop(0, `rgba(220,230,255,${0.22 * nk * (0.3 + 0.7 * ill)})`);
+        glow.addColorStop(1, 'rgba(220,230,255,0)');
+        ctx.fillStyle = glow;
+        ctx.beginPath(); ctx.arc(mx, my, mr * 5, 0, Math.PI * 2); ctx.fill();
+        // 月面
         ctx.fillStyle = `rgba(235,240,250,${0.9 * nk})`;
         ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.fill();
+        // 在月面内用天空色画一个偏移圆作阴影，得到正确的盈亏形状
+        ctx.save();
+        ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI * 2); ctx.clip();
         ctx.fillStyle = rgb(skyT);
-        ctx.beginPath(); ctx.arc(mx - mr * 0.4, my - mr * 0.12, mr * 0.92, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(mx + dir * ill * 2.3 * mr, my - mr * 0.10, mr * 1.02, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
       }
 
       // 暖阳（冬天偏冷，入夜隐去）
