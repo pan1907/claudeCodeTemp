@@ -3487,7 +3487,7 @@
     makeDucks() {
       const m = Math.min(W, H), hY = this.horizon();
       const fromLeft = Math.random() < 0.5, dir = fromLeft ? 1 : -1;
-      const n = 3 + Math.floor(Math.random() * 3);    // 3~5 只小鸭
+      const n = 6;                                    // 6 只小鸭
       const gap = m * 0.020;
       const members = [{ mother: true, s: 1.25, lag: 0, ph: rand(0, 7) }];
       for (let i = 0; i < n; i++) members.push({ mother: false, s: 0.62, lag: gap * 1.5 + i * gap, ph: rand(0, 7) });
@@ -3608,7 +3608,7 @@
       if (si === 0) {
         if (!this.springRolled && st.sp > 0.30) {
           this.springRolled = true;
-          this.duckSpawnT = (st.sp < 0.58 && Math.random() < 1.0) ? t + rand(2, 8) : Infinity;  // 临时调成必现，方便预览
+          this.duckSpawnT = (st.sp < 0.58 && Math.random() < 0.30) ? t + rand(2, 8) : Infinity;  // 约三成的春天出现
         }
         if (t >= this.duckSpawnT && !this.ducks) {
           if (st.sp < 0.70) this.ducks = this.makeDucks();
